@@ -5,7 +5,6 @@ from sqlalchemy.exc import IntegrityError
 from core.exception_handlers import BaseDomainError
 from .users_model import User
 
-
 class UserRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -30,10 +29,25 @@ class UserRepository:
             raise BaseDomainError("User not found", 404)
 
         return user
+    
+    async def search(self, filters: dict):
+        stmt = select(User)
+
+        for field, value in filters.items():
+            if hasattr(User, field):
+                stmt = stmt.where(getattr(User, field) == value)
+
+        result = await self.db.execute(stmt)
+        return result.scalars().all()
 
     async def update(self, user: User, data: dict):
         for field, value in data.items():
             setattr(user, field, value)
 
+        await self.db.flush()
+        return user
+
+    async def soft_delete(self, user: User):
+        user.is_active = False
         await self.db.flush()
         return user

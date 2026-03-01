@@ -13,11 +13,19 @@ class UserService:
         password = payload.pop("password")
         payload["hashed_password"] = hash_password(password)
 
+        #normalize email
+        payload["email"] = payload["email"].strip().lower()
+
         user = await self.user_repository.create(payload)
         return user
     
     async def get_by_id(self, id: UUID):
         return await self.user_repository.get_by_id(id)
+    
+    async def get_by_email(self, email: str):
+        users = await self.user_repository.search({"email": email})
+        return users[0] if users else None
+    
                     
     async def update(self, id: UUID, payload: dict):
         user = await self.user_repository.get_by_id(id)
@@ -26,6 +34,6 @@ class UserService:
     
     async def delete(self, id: UUID):
         user = await self.user_repository.get_by_id(id)
-        await self.user_repository.update(user, {"is_active": False})
+        await self.user_repository.soft_delete(user)
     
 
