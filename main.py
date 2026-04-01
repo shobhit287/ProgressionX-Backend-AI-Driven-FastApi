@@ -17,7 +17,7 @@ app = FastAPI(title="ProgressionX API", version="1.0.0", docs_url=f"{settings.AP
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS.split(","),
+    allow_origins=[settings.PORTAL_URL],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
