@@ -5,6 +5,12 @@ class LoginSchema(BaseModel):
     email: EmailStr = Field(..., description="Email of user")
     password: str = Field(..., description="Password of user", min_length=8)
 
+class RefreshSchema(BaseModel):
+    refresh_token: str = Field(..., alias="refreshToken", description="Refresh token")
+
+    class Config:
+        validate_by_name = True
+
 class TokenSchema(BaseModel):
     access_token: str = Field(..., alias="accessToken", description="Access token")
     refresh_token: str = Field(..., alias="refreshToken", description="Refresh token")
