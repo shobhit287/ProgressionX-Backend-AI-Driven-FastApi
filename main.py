@@ -13,7 +13,7 @@ from features.analytics import analytics_router
 from features.ai_analysis import ai_router
 from core.exception_handlers import BaseDomainError, domain_exception_handler
 
-app = FastAPI(title="ProgressionX API", version="1.0.0")
+app = FastAPI(title="ProgressionX API", version="1.0.0", docs_url=f"{settings.API_PREFIX}/docs")
 
 app.add_middleware(
     CORSMiddleware,
