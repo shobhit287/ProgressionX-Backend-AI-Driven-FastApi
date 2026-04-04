@@ -30,6 +30,19 @@ class AnalyzeWeightRequest(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class SessionCoachRequest(BaseModel):
+    session_id: UUID = Field(..., alias="sessionId")
+    question: str = Field(...)
+
+    model_config = {"populate_by_name": True}
+
+
+class SessionCoachResponse(BaseModel):
+    answer: str = Field(...)
+
+    model_config = {"populate_by_name": True}
+
+
 class AIAnalysisResponse(BaseModel):
     analysis: str = Field(...)
     suggestions: List[str] = Field(...)

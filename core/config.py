@@ -4,7 +4,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     SECRET_KEY: str
     API_PREFIX: str = "/api/v1"
-    ANTHROPIC_API_KEY: str = ""
+    GEMINI_API_KEY: str = ""
     PORTAL_URL: str 
 
     class Config:
