@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -8,6 +8,7 @@ from core.exception_handlers import BaseDomainError
 from features.split_exercise.split_exercise_model import SplitExercise
 from .workout_session_repository import WorkoutSessionRepository
 from .workout_session_enum import SessionStatusEnum
+from .session_exercise_model import SessionExercise
 
 
 class WorkoutSessionService:
@@ -18,7 +19,19 @@ class WorkoutSessionService:
     async def start_session(self, user_id: UUID, split_id: UUID):
         active = await self.repository.get_active(user_id)
         if active:
-            raise BaseDomainError("An active workout session already exists", 409)
+            # Auto-complete stale session from a previous day instead of blocking
+            started = active.started_at.replace(tzinfo=timezone.utc) if active.started_at.tzinfo is None else active.started_at
+            if started.date() < datetime.now(timezone.utc).date():
+                now = datetime.now(timezone.utc)
+                duration = int((now - started).total_seconds())
+                await self.repository.update(active, {
+                    "status": SessionStatusEnum.COMPLETED,
+                    "completed_at": now,
+                    "duration_seconds": duration,
+                    "notes": "Auto-completed (session from previous day)",
+                })
+            else:
+                raise BaseDomainError("An active workout session already exists", 409)
 
         session = await self.repository.create({
             "user_id": user_id,
@@ -49,10 +62,34 @@ class WorkoutSessionService:
         return await self.repository.get_by_id_with_details(session.id, user_id)
 
     async def get_active(self, user_id: UUID):
-        return await self.repository.get_active(user_id)
+        session = await self.repository.get_active(user_id)
+        if not session:
+            return None
+
+        # Auto-complete sessions from a previous calendar day
+        started = session.started_at.replace(tzinfo=timezone.utc) if session.started_at.tzinfo is None else session.started_at
+        if started.date() < datetime.now(timezone.utc).date():
+            now = datetime.now(timezone.utc)
+            duration = int((now - started).total_seconds())
+            await self.repository.update(session, {
+                "status": SessionStatusEnum.COMPLETED,
+                "completed_at": now,
+                "duration_seconds": duration,
+                "notes": "Auto-completed (session from previous day)",
+            })
+            await self.db.commit()
+            return None
+
+        # Sync new exercises added to the split after session started
+        await self._sync_split_exercises(session)
+
+        return session
 
     async def get_by_id(self, session_id: UUID, user_id: UUID):
-        return await self.repository.get_by_id_with_details(session_id, user_id)
+        session = await self.repository.get_by_id_with_details(session_id, user_id)
+        if session and session.status == SessionStatusEnum.IN_PROGRESS:
+            await self._sync_split_exercises(session)
+        return session
 
     async def get_all(self, user_id: UUID, filters: dict):
         sessions, total = await self.repository.get_all(user_id, filters)
@@ -95,3 +132,40 @@ class WorkoutSessionService:
     async def delete_session(self, session_id: UUID, user_id: UUID):
         session = await self.repository.get_by_id(session_id, user_id)
         await self.repository.delete(session)
+
+    async def _sync_split_exercises(self, session):
+        """Add any exercises that were added to the split after the session started."""
+        result = await self.db.execute(
+            select(SplitExercise)
+            .where(SplitExercise.split_id == session.split_id)
+            .order_by(SplitExercise.display_order)
+        )
+        current_split_exercises = result.scalars().all()
+
+        existing_split_exercise_ids = {
+            ex.split_exercise_id for ex in session.exercises if ex.split_exercise_id
+        }
+
+        new_exercises = [
+            ex for ex in current_split_exercises
+            if ex.id not in existing_split_exercise_ids
+        ]
+
+        if not new_exercises:
+            return
+
+        max_order = max((ex.display_order for ex in session.exercises), default=0)
+        for ex in new_exercises:
+            max_order += 1
+            session_exercise = SessionExercise(
+                session_id=session.id,
+                split_exercise_id=ex.id,
+                exercise_name=ex.name,
+                display_order=max_order,
+                exercise_type=ex.exercise_type,
+                superset_group=ex.superset_group,
+            )
+            self.db.add(session_exercise)
+            session.exercises.append(session_exercise)
+
+        await self.db.flush()
