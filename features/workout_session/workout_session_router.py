@@ -32,8 +32,7 @@ async def start_session(
     service = WorkoutSessionService(db)
     session = await service.start_session(user.id, data.split_id)
     await db.commit()
-    await db.refresh(session)
-    return session
+    return await service.get_by_id(session.id, user.id)
 
 
 @router.get(
@@ -80,6 +79,7 @@ async def get_active_session(
 ):
     service = WorkoutSessionService(db)
     session = await service.get_active(user.id)
+    await db.commit()
     return session
 
 
