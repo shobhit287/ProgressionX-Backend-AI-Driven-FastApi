@@ -19,19 +19,17 @@ class WorkoutSessionService:
     async def start_session(self, user_id: UUID, split_id: UUID):
         active = await self.repository.get_active(user_id)
         if active:
-            # Auto-complete stale session from a previous day instead of blocking
+            # Auto-complete any existing active session so a new one can start
             started = active.started_at.replace(tzinfo=timezone.utc) if active.started_at.tzinfo is None else active.started_at
-            if started.date() < datetime.now(timezone.utc).date():
-                now = datetime.now(timezone.utc)
-                duration = int((now - started).total_seconds())
-                await self.repository.update(active, {
-                    "status": SessionStatusEnum.COMPLETED,
-                    "completed_at": now,
-                    "duration_seconds": duration,
-                    "notes": "Auto-completed (session from previous day)",
-                })
-            else:
-                raise BaseDomainError("An active workout session already exists", 409)
+            now = datetime.now(timezone.utc)
+            duration = int((now - started).total_seconds())
+            is_previous_day = started.date() < now.date()
+            await self.repository.update(active, {
+                "status": SessionStatusEnum.COMPLETED,
+                "completed_at": now,
+                "duration_seconds": duration,
+                "notes": "Auto-completed (previous session replaced by new start)" if is_previous_day else "Auto-completed (new session started)",
+            })
 
         session = await self.repository.create({
             "user_id": user_id,
@@ -81,14 +79,20 @@ class WorkoutSessionService:
             return None
 
         # Sync new exercises added to the split after session started
-        await self._sync_split_exercises(session)
+        synced = await self._sync_split_exercises(session)
 
+        # Re-fetch with eager loading if new exercises were added,
+        # otherwise the newly appended SessionExercise objects lack loaded 'sets'
+        if synced:
+            return await self.repository.get_by_id_with_details(session.id, session.user_id)
         return session
 
     async def get_by_id(self, session_id: UUID, user_id: UUID):
         session = await self.repository.get_by_id_with_details(session_id, user_id)
         if session and session.status == SessionStatusEnum.IN_PROGRESS:
-            await self._sync_split_exercises(session)
+            synced = await self._sync_split_exercises(session)
+            if synced:
+                return await self.repository.get_by_id_with_details(session_id, user_id)
         return session
 
     async def get_all(self, user_id: UUID, filters: dict):
@@ -133,8 +137,9 @@ class WorkoutSessionService:
         session = await self.repository.get_by_id(session_id, user_id)
         await self.repository.delete(session)
 
-    async def _sync_split_exercises(self, session):
-        """Add any exercises that were added to the split after the session started."""
+    async def _sync_split_exercises(self, session) -> bool:
+        """Add any exercises that were added to the split after the session started.
+        Returns True if new exercises were added."""
         result = await self.db.execute(
             select(SplitExercise)
             .where(SplitExercise.split_id == session.split_id)
@@ -152,7 +157,7 @@ class WorkoutSessionService:
         ]
 
         if not new_exercises:
-            return
+            return False
 
         max_order = max((ex.display_order for ex in session.exercises), default=0)
         for ex in new_exercises:
@@ -166,6 +171,6 @@ class WorkoutSessionService:
                 superset_group=ex.superset_group,
             )
             self.db.add(session_exercise)
-            session.exercises.append(session_exercise)
 
         await self.db.flush()
+        return True
