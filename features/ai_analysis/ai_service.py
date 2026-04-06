@@ -99,6 +99,7 @@ class AIService:
         self,
         user_id: UUID,
         question: str,
+        history: list[dict] | None = None,
     ) -> dict:
         user = await self._get_user(user_id)
 
@@ -117,12 +118,13 @@ class AIService:
         except Exception:
             weight_analytics = None
 
-        prompt = build_fitness_chat_prompt(
+        context_prompt = build_fitness_chat_prompt(
             user, recent_sessions, weight_analytics, question
         )
-        answer = await groq_client.generate(
-            prompt,
+        answer = await groq_client.generate_with_history(
+            context_prompt,
             system_instruction=FITNESS_CHAT_SYSTEM_INSTRUCTION,
+            history=history or [],
             max_tokens=512,
         )
         return {"answer": answer}

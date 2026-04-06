@@ -94,6 +94,7 @@ async def fitness_chat(
     result = await service.fitness_chat(
         user.id,
         question=data.question,
+        history=[msg.model_dump() for msg in data.history],
     )
     return result
 

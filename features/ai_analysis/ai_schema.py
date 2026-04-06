@@ -43,8 +43,14 @@ class SessionCoachResponse(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class ChatMessageItem(BaseModel):
+    role: str = Field(...)
+    content: str = Field(...)
+
+
 class FitnessChatRequest(BaseModel):
     question: str = Field(...)
+    history: List[ChatMessageItem] = Field(default_factory=list)
 
     model_config = {"populate_by_name": True}
 
