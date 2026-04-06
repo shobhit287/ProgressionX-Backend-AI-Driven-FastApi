@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, cast, Date
 from sqlalchemy.orm import selectinload
 
-from core.gemini import gemini_client
+from core.groq_client import groq_client
 from features.users.users_model import User
 from features.analytics.analytics_service import AnalyticsService
 from features.weight_log.weight_log_service import WeightLogService
@@ -15,10 +15,12 @@ from features.workout_session.workout_session_enum import SessionStatusEnum
 from .ai_prompts import (
     ANALYSIS_SYSTEM_INSTRUCTION,
     SESSION_COACH_SYSTEM_INSTRUCTION,
+    FITNESS_CHAT_SYSTEM_INSTRUCTION,
     build_session_analysis_prompt,
     build_exercise_analysis_prompt,
     build_weight_analysis_prompt,
     build_session_coach_prompt,
+    build_fitness_chat_prompt,
 )
 
 
@@ -52,7 +54,7 @@ class AIService:
         )
 
         prompt = build_session_analysis_prompt(user, data["sessions"], question)
-        return await gemini_client.generate_json(
+        return await groq_client.generate_json(
             prompt, system_instruction=ANALYSIS_SYSTEM_INSTRUCTION
         )
 
@@ -72,7 +74,7 @@ class AIService:
         prompt = build_exercise_analysis_prompt(
             user, exercise_name, data["data_points"], data["personal_record"], question
         )
-        return await gemini_client.generate_json(
+        return await groq_client.generate_json(
             prompt, system_instruction=ANALYSIS_SYSTEM_INSTRUCTION
         )
 
@@ -87,9 +89,43 @@ class AIService:
         analytics = await self.weight_log.get_analytics(user_id, from_date, to_date)
 
         prompt = build_weight_analysis_prompt(user, analytics, question)
-        return await gemini_client.generate_json(
+        return await groq_client.generate_json(
             prompt, system_instruction=ANALYSIS_SYSTEM_INSTRUCTION
         )
+
+    # ── fitness chat ──────────────────────────────────────────────────
+
+    async def fitness_chat(
+        self,
+        user_id: UUID,
+        question: str,
+    ) -> dict:
+        user = await self._get_user(user_id)
+
+        # Fetch recent session data (last 4 weeks) for context
+        four_weeks_ago = date.today() - timedelta(weeks=4)
+        session_data = await self.analytics.get_session_analytics(
+            user_id, from_date=four_weeks_ago
+        )
+        recent_sessions = session_data.get("sessions", [])
+
+        # Fetch weight analytics for context
+        try:
+            weight_analytics = await self.weight_log.get_analytics(
+                user_id, from_date=four_weeks_ago
+            )
+        except Exception:
+            weight_analytics = None
+
+        prompt = build_fitness_chat_prompt(
+            user, recent_sessions, weight_analytics, question
+        )
+        answer = await groq_client.generate(
+            prompt,
+            system_instruction=FITNESS_CHAT_SYSTEM_INSTRUCTION,
+            max_tokens=512,
+        )
+        return {"answer": answer}
 
     # ── session coach ─────────────────────────────────────────────────
 
@@ -135,7 +171,7 @@ class AIService:
         past_sessions = history_result.scalars().all()
 
         prompt = build_session_coach_prompt(user, session, past_sessions, question)
-        answer = await gemini_client.generate(
+        answer = await groq_client.generate(
             prompt,
             system_instruction=SESSION_COACH_SYSTEM_INSTRUCTION,
             max_tokens=300,

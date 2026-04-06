@@ -9,6 +9,8 @@ from .ai_schema import (
     AIAnalysisResponse,
     SessionCoachRequest,
     SessionCoachResponse,
+    FitnessChatRequest,
+    FitnessChatResponse,
 )
 from .ai_service import AIService
 
@@ -73,6 +75,24 @@ async def analyze_weight(
         user.id,
         from_date=data.from_date,
         to_date=data.to_date,
+        question=data.question,
+    )
+    return result
+
+
+@router.post(
+    "/chat",
+    status_code=status.HTTP_200_OK,
+    response_model=FitnessChatResponse,
+)
+async def fitness_chat(
+    data: FitnessChatRequest,
+    user=Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    service = AIService(db)
+    result = await service.fitness_chat(
+        user.id,
         question=data.question,
     )
     return result

@@ -43,6 +43,18 @@ class SessionCoachResponse(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class FitnessChatRequest(BaseModel):
+    question: str = Field(...)
+
+    model_config = {"populate_by_name": True}
+
+
+class FitnessChatResponse(BaseModel):
+    answer: str = Field(...)
+
+    model_config = {"populate_by_name": True}
+
+
 class AIAnalysisResponse(BaseModel):
     analysis: str = Field(...)
     suggestions: List[str] = Field(...)

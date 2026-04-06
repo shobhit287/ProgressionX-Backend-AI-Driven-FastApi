@@ -15,6 +15,17 @@ ANALYSIS_SYSTEM_INSTRUCTION = (
     '{"analysis": "your detailed analysis here", "suggestions": ["suggestion 1", "suggestion 2", ...]}'
 )
 
+FITNESS_CHAT_SYSTEM_INSTRUCTION = (
+    "You are a knowledgeable fitness assistant inside a gym tracking app called ProgressionX. "
+    "You ONLY answer questions related to fitness, exercise, workout programming, diet, nutrition, "
+    "supplements, recovery, injury prevention, body composition, and health goals. "
+    "If the user asks anything unrelated to fitness or health, politely decline and redirect them "
+    "to ask a fitness-related question instead. "
+    "You have access to the user's profile and recent training/weight data — use it to personalize your answers. "
+    "Keep answers concise (3-6 sentences), practical, and actionable. "
+    "Respond in plain text. Do not use markdown formatting."
+)
+
 SESSION_COACH_SYSTEM_INSTRUCTION = (
     "You are a real-time gym coach embedded in a workout tracking app. "
     "The user is mid-session and asking you a quick question about their current workout. "
@@ -165,6 +176,40 @@ def build_weight_analysis_prompt(
         prompt += f"\nThe user specifically asks: {question}\n"
 
     return prompt
+
+
+def build_fitness_chat_prompt(
+    user,
+    recent_sessions: list[dict],
+    weight_analytics: dict | None,
+    question: str,
+) -> str:
+    context = (
+        f"User profile: Name = {user.first_name}, Goal = {user.goal.value}, "
+        f"Weight = {user.weight}kg, Height = {user.height}cm, "
+        f"Age = {user.age}, Gender = {user.gender.value}\n\n"
+    )
+
+    if recent_sessions:
+        context += f"Recent workout sessions ({len(recent_sessions)} sessions, last 4 weeks):\n"
+        for s in recent_sessions:
+            context += (
+                f"- Date: {s['date']}, Volume: {s['total_volume']}kg, "
+                f"Sets: {s['total_sets']}, Reps: {s['total_reps']}, "
+                f"Avg RIR: {s['avg_rir']}, Duration: {s['duration_seconds']}s, "
+                f"Exercises: {s['exercise_count']}\n"
+            )
+    else:
+        context += "No recent workout sessions found.\n"
+
+    if weight_analytics and weight_analytics.get("entries", 0) > 0:
+        context += (
+            f"\nWeight log: Total change = {weight_analytics['total_change']}kg, "
+            f"Rate = {weight_analytics['rate_of_change']}kg/week, "
+            f"Entries = {weight_analytics['entries']}\n"
+        )
+
+    return f"{context}\nUser's question: {question}"
 
 
 def build_session_coach_prompt(
