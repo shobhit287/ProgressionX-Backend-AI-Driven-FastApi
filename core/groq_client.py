@@ -1,8 +1,24 @@
 import json
+import logging
 
 from groq import AsyncGroq
 
 from core.config import settings
+from core.exception_handlers import BaseDomainError
+
+logger = logging.getLogger(__name__)
+
+
+def _is_rate_limit_error(exc: Exception) -> bool:
+    """Check if exception is a Groq rate limit error (works across SDK versions)."""
+    cls_name = type(exc).__name__
+    if cls_name == "RateLimitError":
+        return True
+    # httpx-based errors: check status code
+    status = getattr(exc, "status_code", None)
+    if status == 429:
+        return True
+    return False
 
 
 class GroqClient:
@@ -20,15 +36,22 @@ class GroqClient:
         system_instruction: str,
         max_tokens: int = 1024,
     ) -> str:
-        response = await self._client.chat.completions.create(
-            model=self.MODEL,
-            messages=[
-                {"role": "system", "content": system_instruction},
-                {"role": "user", "content": prompt},
-            ],
-            max_tokens=max_tokens,
-        )
-        return response.choices[0].message.content
+        try:
+            response = await self._client.chat.completions.create(
+                model=self.MODEL,
+                messages=[
+                    {"role": "system", "content": system_instruction},
+                    {"role": "user", "content": prompt},
+                ],
+                max_tokens=max_tokens,
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            if _is_rate_limit_error(e):
+                logger.warning(f"Groq rate limit hit: {e}")
+                raise BaseDomainError("AI is temporarily busy. Please try again in a minute.", 503)
+            logger.error(f"Groq API error: {type(e).__name__} - {e}")
+            raise BaseDomainError("AI service is currently unavailable. Please try again later.", 503)
 
     # Reserve tokens for system prompt + current user message + response
     MAX_HISTORY_TOKENS = 2048
@@ -61,12 +84,19 @@ class GroqClient:
         for msg in self._trim_history(history):
             messages.append({"role": msg["role"], "content": msg["content"]})
         messages.append({"role": "user", "content": prompt})
-        response = await self._client.chat.completions.create(
-            model=self.MODEL,
-            messages=messages,
-            max_tokens=max_tokens,
-        )
-        return response.choices[0].message.content
+        try:
+            response = await self._client.chat.completions.create(
+                model=self.MODEL,
+                messages=messages,
+                max_tokens=max_tokens,
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            if _is_rate_limit_error(e):
+                logger.warning(f"Groq rate limit hit: {e}")
+                raise BaseDomainError("AI is temporarily busy. Please try again in a minute.", 503)
+            logger.error(f"Groq API error: {type(e).__name__} - {e}")
+            raise BaseDomainError("AI service is currently unavailable. Please try again later.", 503)
 
     async def generate_json(
         self,

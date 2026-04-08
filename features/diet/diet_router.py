@@ -66,7 +66,7 @@ async def delete_diet_plan(
     status_code=status.HTTP_200_OK,
     response_model=DietChatResponse,
 )
-@limiter.limit("15/minute")
+@limiter.limit("5/minute")
 async def diet_chat(
     request: Request,
     data: DietChatRequest,
@@ -83,7 +83,7 @@ async def diet_chat(
     status_code=status.HTTP_200_OK,
     response_model=GenerateDietResponse,
 )
-@limiter.limit("5/minute")
+@limiter.limit("2/minute")
 async def generate_diet(
     request: Request,
     data: GenerateDietRequest = None,

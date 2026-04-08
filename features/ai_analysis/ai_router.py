@@ -26,7 +26,7 @@ router = APIRouter(prefix="/ai", tags=["AI Analysis"])
     status_code=status.HTTP_200_OK,
     response_model=AIAnalysisResponse,
 )
-@limiter.limit("10/minute")
+@limiter.limit("3/minute")
 async def analyze_sessions(
     request: Request,
     data: AnalyzeSessionsRequest,
@@ -49,7 +49,7 @@ async def analyze_sessions(
     status_code=status.HTTP_200_OK,
     response_model=AIAnalysisResponse,
 )
-@limiter.limit("10/minute")
+@limiter.limit("3/minute")
 async def analyze_exercise(
     request: Request,
     data: AnalyzeExerciseRequest,
@@ -72,7 +72,7 @@ async def analyze_exercise(
     status_code=status.HTTP_200_OK,
     response_model=AIAnalysisResponse,
 )
-@limiter.limit("10/minute")
+@limiter.limit("3/minute")
 async def analyze_weight(
     request: Request,
     data: AnalyzeWeightRequest,
@@ -94,7 +94,7 @@ async def analyze_weight(
     status_code=status.HTTP_200_OK,
     response_model=FitnessChatResponse,
 )
-@limiter.limit("15/minute")
+@limiter.limit("5/minute")
 async def fitness_chat(
     request: Request,
     data: FitnessChatRequest,
@@ -115,7 +115,7 @@ async def fitness_chat(
     status_code=status.HTTP_200_OK,
     response_model=SessionCoachResponse,
 )
-@limiter.limit("20/minute")
+@limiter.limit("5/minute")
 async def session_coach(
     request: Request,
     data: SessionCoachRequest,
@@ -136,7 +136,7 @@ async def session_coach(
     status_code=status.HTTP_200_OK,
     response_model=SessionPlanResponse,
 )
-@limiter.limit("5/minute")
+@limiter.limit("2/minute")
 async def session_plan(
     request: Request,
     data: SessionPlanRequest,
