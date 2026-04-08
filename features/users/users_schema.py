@@ -58,6 +58,7 @@ class UpdateUserSchema(BaseModel):
     goal: Optional[GoalEnum] = Field(None)
     gender: Optional[GenderEnum] = Field(None)
     training_type: Optional[TrainingTypeEnum] = Field(None, alias="trainingType")
+    activity_level: Optional[str] = Field(None, alias="activityLevel")
 
     mobile_number: Optional[str] = Field(None, alias="mobileNumber")
     is_active: Optional[bool] = Field(None, alias="isActive")
@@ -98,6 +99,7 @@ class ResponseUserSchema(BaseModel):
     goal: GoalEnum = Field(...)
     gender: GenderEnum = Field(...)
     training_type: TrainingTypeEnum = Field(..., alias="trainingType")
+    activity_level: Optional[str] = Field(None, alias="activityLevel")
 
     mobile_number: Optional[str] = Field(None, alias="mobileNumber")
     email: EmailStr = Field(...)

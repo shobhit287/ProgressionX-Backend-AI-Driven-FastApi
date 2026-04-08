@@ -4,6 +4,7 @@ from sqlalchemy import (
     Enum,
     UUID,
     String,
+    Text,
     DateTime,
     Integer,
     Float,
@@ -33,8 +34,10 @@ class User(Base):
         Enum(TrainingTypeEnum, name="training_type_enum"),
         nullable=False,
         default=TrainingTypeEnum.HYPERTROPHY,
-        server_default="hypertrophy",
+        server_default="HYPERTROPHY",
     )
+
+    activity_level = Column(Text, nullable=True)
 
     mobile_number = Column(String(20), nullable=True, index=True)
     email = Column(String(255), nullable=False, unique=True, index=True)

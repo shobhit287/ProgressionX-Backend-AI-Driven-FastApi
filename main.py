@@ -11,6 +11,7 @@ from features.exercise_set import exercise_set_router
 from features.weight_log import weight_log_router
 from features.analytics import analytics_router
 from features.ai_analysis import ai_router
+from features.diet import diet_router as diet_router_module
 from core.exception_handlers import BaseDomainError, domain_exception_handler
 
 app = FastAPI(title="ProgressionX API", version="1.0.0", docs_url=f"{settings.API_PREFIX}/docs")
@@ -42,3 +43,4 @@ app.include_router(exercise_set_router.router, prefix=settings.API_PREFIX)
 app.include_router(weight_log_router.router, prefix=settings.API_PREFIX)
 app.include_router(analytics_router.router, prefix=settings.API_PREFIX)
 app.include_router(ai_router.router, prefix=settings.API_PREFIX)
+app.include_router(diet_router_module.router, prefix=settings.API_PREFIX)
