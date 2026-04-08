@@ -11,6 +11,8 @@ from .ai_schema import (
     SessionCoachResponse,
     FitnessChatRequest,
     FitnessChatResponse,
+    SessionPlanRequest,
+    SessionPlanResponse,
 )
 from .ai_service import AIService
 
@@ -114,5 +116,23 @@ async def session_coach(
         user.id,
         session_id=data.session_id,
         question=data.question,
+    )
+    return result
+
+
+@router.post(
+    "/session-plan",
+    status_code=status.HTTP_200_OK,
+    response_model=SessionPlanResponse,
+)
+async def session_plan(
+    data: SessionPlanRequest,
+    user=Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    service = AIService(db)
+    result = await service.generate_session_plan(
+        user.id,
+        session_id=data.session_id,
     )
     return result

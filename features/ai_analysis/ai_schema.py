@@ -66,3 +66,32 @@ class AIAnalysisResponse(BaseModel):
     suggestions: List[str] = Field(...)
 
     model_config = {"populate_by_name": True}
+
+
+class SessionPlanRequest(BaseModel):
+    session_id: UUID = Field(..., alias="sessionId")
+
+    model_config = {"populate_by_name": True}
+
+
+class PlannedSet(BaseModel):
+    set_number: int = Field(..., alias="setNumber")
+    weight_kg: float = Field(..., alias="weightKg")
+    reps: int = Field(...)
+    is_warmup: bool = Field(False, alias="isWarmup")
+
+    model_config = {"populate_by_name": True}
+
+
+class PlannedExercise(BaseModel):
+    exercise_name: str = Field(..., alias="exerciseName")
+    sets: List[PlannedSet] = Field(...)
+
+    model_config = {"populate_by_name": True}
+
+
+class SessionPlanResponse(BaseModel):
+    exercises: List[PlannedExercise] = Field(...)
+    note: str = Field("")
+
+    model_config = {"populate_by_name": True}

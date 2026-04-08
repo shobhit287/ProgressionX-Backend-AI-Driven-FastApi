@@ -138,39 +138,57 @@ class WorkoutSessionService:
         await self.repository.delete(session)
 
     async def _sync_split_exercises(self, session) -> bool:
-        """Add any exercises that were added to the split after the session started.
-        Returns True if new exercises were added."""
+        """Sync session exercises with the current split:
+        - Add exercises that were added to the split after the session started.
+        - Remove exercises that were deleted from the split (split_exercise_id is NULL).
+        Returns True if any changes were made."""
         result = await self.db.execute(
             select(SplitExercise)
             .where(SplitExercise.split_id == session.split_id)
             .order_by(SplitExercise.display_order)
         )
         current_split_exercises = result.scalars().all()
+        current_split_exercise_ids = {ex.id for ex in current_split_exercises}
 
         existing_split_exercise_ids = {
             ex.split_exercise_id for ex in session.exercises if ex.split_exercise_id
         }
 
+        changed = False
+
+        # Remove session exercises whose split_exercise was deleted
+        # (split_exercise_id is NULL due to SET NULL cascade, meaning it was deleted)
+        exercises_to_remove = [
+            ex for ex in session.exercises
+            if ex.split_exercise_id is None
+            or (ex.split_exercise_id and ex.split_exercise_id not in current_split_exercise_ids)
+        ]
+        for ex in exercises_to_remove:
+            await self.db.delete(ex)
+            changed = True
+
+        # Add new exercises from split
         new_exercises = [
             ex for ex in current_split_exercises
             if ex.id not in existing_split_exercise_ids
         ]
 
-        if not new_exercises:
-            return False
+        if new_exercises:
+            max_order = max((ex.display_order for ex in session.exercises), default=0)
+            for ex in new_exercises:
+                max_order += 1
+                session_exercise = SessionExercise(
+                    session_id=session.id,
+                    split_exercise_id=ex.id,
+                    exercise_name=ex.name,
+                    display_order=max_order,
+                    exercise_type=ex.exercise_type,
+                    superset_group=ex.superset_group,
+                )
+                self.db.add(session_exercise)
+            changed = True
 
-        max_order = max((ex.display_order for ex in session.exercises), default=0)
-        for ex in new_exercises:
-            max_order += 1
-            session_exercise = SessionExercise(
-                session_id=session.id,
-                split_exercise_id=ex.id,
-                exercise_name=ex.name,
-                display_order=max_order,
-                exercise_type=ex.exercise_type,
-                superset_group=ex.superset_group,
-            )
-            self.db.add(session_exercise)
+        if changed:
+            await self.db.flush()
 
-        await self.db.flush()
-        return True
+        return changed

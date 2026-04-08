@@ -5,7 +5,14 @@ class GoalEnum(str, Enum):
     CUTTING = "cutting"
     MAINTENANCE = "maintenance"
 
-class GenderEnum(str,Enum):
+class GenderEnum(str, Enum):
     MALE = "male"
-    FEMALE= "female"
-    OTHER= "other"
+    FEMALE = "female"
+    OTHER = "other"
+
+class TrainingTypeEnum(str, Enum):
+    HYPERTROPHY = "hypertrophy"
+    STRENGTH = "strength"
+    POWERBUILDING = "powerbuilding"
+    ENDURANCE = "endurance"
+    GENERAL_FITNESS = "general_fitness"

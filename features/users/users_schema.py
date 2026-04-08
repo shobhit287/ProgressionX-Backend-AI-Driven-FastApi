@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field, EmailStr
 from typing import Optional
 from uuid import UUID
 from datetime import datetime
-from .users_enum import GoalEnum, GenderEnum
+from .users_enum import GoalEnum, GenderEnum, TrainingTypeEnum
 
 
 # Create User Schema
@@ -16,6 +16,11 @@ class CreateUserSchema(BaseModel):
 
     goal: GoalEnum = Field(..., description="Fitness goal of the user")
     gender: GenderEnum = Field(..., description="Gender of the user")
+    training_type: TrainingTypeEnum = Field(
+        TrainingTypeEnum.HYPERTROPHY,
+        alias="trainingType",
+        description="Training style preference",
+    )
 
     mobile_number: Optional[str] = Field(None, alias="mobileNumber", description="Mobile number of the user")
     email: EmailStr = Field(..., description="Email address of the user")
@@ -32,6 +37,7 @@ class CreateUserSchema(BaseModel):
                 "height": 178,
                 "goal": "bulking",
                 "gender": "male",
+                "trainingType": "hypertrophy",
                 "mobileNumber": "9876543210",
                 "email": "john.doe@example.com",
                 "password": "strongpassword123"
@@ -51,6 +57,7 @@ class UpdateUserSchema(BaseModel):
 
     goal: Optional[GoalEnum] = Field(None)
     gender: Optional[GenderEnum] = Field(None)
+    training_type: Optional[TrainingTypeEnum] = Field(None, alias="trainingType")
 
     mobile_number: Optional[str] = Field(None, alias="mobileNumber")
     is_active: Optional[bool] = Field(None, alias="isActive")
@@ -68,6 +75,16 @@ class UpdateUserSchema(BaseModel):
     }
 
 
+# Change Password Schema
+class ChangePasswordSchema(BaseModel):
+    old_password: str = Field(..., alias="oldPassword", min_length=1)
+    new_password: str = Field(..., alias="newPassword", min_length=8)
+
+    model_config = {
+        "populate_by_name": True,
+    }
+
+
 # Response User Schema
 class ResponseUserSchema(BaseModel):
     id: UUID = Field(...)
@@ -80,6 +97,7 @@ class ResponseUserSchema(BaseModel):
 
     goal: GoalEnum = Field(...)
     gender: GenderEnum = Field(...)
+    training_type: TrainingTypeEnum = Field(..., alias="trainingType")
 
     mobile_number: Optional[str] = Field(None, alias="mobileNumber")
     email: EmailStr = Field(...)

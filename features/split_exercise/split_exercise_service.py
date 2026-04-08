@@ -1,12 +1,17 @@
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, delete as sql_delete
 
 from .split_exercise_repository import SplitExerciseRepository
 from features.workout_split.workout_split_repository import WorkoutSplitRepository
+from features.workout_session.workout_session_model import WorkoutSession
+from features.workout_session.session_exercise_model import SessionExercise
+from features.workout_session.workout_session_enum import SessionStatusEnum
 
 
 class SplitExerciseService:
     def __init__(self, db: AsyncSession):
+        self.db = db
         self.exercise_repository = SplitExerciseRepository(db)
         self.split_repository = WorkoutSplitRepository(db)
 
@@ -39,7 +44,26 @@ class SplitExerciseService:
     async def delete(self, split_id: UUID, exercise_id: UUID, user_id: UUID):
         await self._verify_split_ownership(split_id, user_id)
         exercise = await self.exercise_repository.get_by_id(exercise_id)
-        deleted_order = exercise.display_order
+
+        # Remove this exercise from any active (in-progress) sessions for this split
+        active_sessions_result = await self.db.execute(
+            select(WorkoutSession.id).where(
+                WorkoutSession.user_id == user_id,
+                WorkoutSession.split_id == split_id,
+                WorkoutSession.status == SessionStatusEnum.IN_PROGRESS,
+            )
+        )
+        active_session_ids = [row[0] for row in active_sessions_result.all()]
+
+        if active_session_ids:
+            await self.db.execute(
+                sql_delete(SessionExercise).where(
+                    SessionExercise.session_id.in_(active_session_ids),
+                    SessionExercise.split_exercise_id == exercise_id,
+                )
+            )
+            await self.db.flush()
+
         await self.exercise_repository.delete(exercise)
 
         # Reorder remaining exercises

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.depends import get_db, current_user
-from .users_schema import CreateUserSchema, UpdateUserSchema, ResponseUserSchema
+from .users_schema import CreateUserSchema, UpdateUserSchema, ChangePasswordSchema, ResponseUserSchema
 from .users_service import UserService
 
 
@@ -41,6 +41,18 @@ async def update(
     await db.commit()
     await db.refresh(user)
     return user
+
+
+@router.post("/change-password", status_code=status.HTTP_200_OK)
+async def change_password(
+    data: ChangePasswordSchema,
+    user=Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    user_service = UserService(db)
+    await user_service.change_password(user.id, data.old_password, data.new_password)
+    await db.commit()
+    return {"message": "Password updated successfully"}
 
 
 @router.delete("", status_code=status.HTTP_204_NO_CONTENT)

@@ -1,4 +1,5 @@
-from core.security import hash_password
+from core.security import hash_password, verify_password
+from core.exception_handlers import BaseDomainError
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,6 +33,14 @@ class UserService:
         updated_user = await self.user_repository.update(user, payload)
         return updated_user
     
+    async def change_password(self, id: UUID, old_password: str, new_password: str):
+        user = await self.user_repository.get_by_id(id)
+        if not verify_password(old_password, user.hashed_password):
+            raise BaseDomainError("Current password is incorrect", 400)
+        user.hashed_password = hash_password(new_password)
+        await self.user_repository.update(user, {})
+        return user
+
     async def delete(self, id: UUID):
         user = await self.user_repository.get_by_id(id)
         await self.user_repository.soft_delete(user)

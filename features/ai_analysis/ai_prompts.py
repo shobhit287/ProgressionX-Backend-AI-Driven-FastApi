@@ -26,15 +26,41 @@ FITNESS_CHAT_SYSTEM_INSTRUCTION = (
     "Respond in plain text. Do not use markdown formatting."
 )
 
+SESSION_PLAN_SYSTEM_INSTRUCTION = (
+    "You are an expert strength coach generating a pre-workout plan. "
+    "Given the user's split plan (exercises + target sets) and their last 4-5 sessions of performance data, "
+    "generate a recommended session with specific weights, reps, and warmup sets for each exercise. "
+    "Rules for weight recommendations:\n"
+    "1. Look at the trend across sessions — if performance is consistent, suggest a small increase (1-2.5kg for upper, 2.5-5kg for lower).\n"
+    "2. If the user missed sessions recently, be conservative — recommend the same or slightly lower weight.\n"
+    "3. If RIR was very low (0-1) last session, keep the weight the same and aim for more reps.\n"
+    "4. If RIR was high (3+), suggest increasing weight.\n"
+    "5. Include 1-2 warmup sets for compound movements ramping up to working weight.\n"
+    "6. Use realistic weight increments (2.5kg jumps for barbells, 1-2kg for dumbbells).\n"
+    "7. Respect the user's training style and goal — adjust rep ranges accordingly.\n"
+    "You MUST respond with valid JSON in this exact format:\n"
+    '{"exercises": [{"exerciseName": "Exercise Name", "sets": [{"setNumber": 1, "weightKg": 20, "reps": 12, "isWarmup": true}, '
+    '{"setNumber": 2, "weightKg": 30, "reps": 10, "isWarmup": false}]}], "note": "brief one-line note about the plan"}\n'
+    "Do NOT include any text outside the JSON. Only JSON."
+)
+
 SESSION_COACH_SYSTEM_INSTRUCTION = (
     "You are a real-time gym coach embedded in a workout tracking app. "
     "The user is mid-session and asking you a quick question about their current workout. "
-    "You have access to their current session logs (sets done so far) and their "
-    "previous 2-3 weeks of sessions for the same muscle group/split. "
+    "You have access to their split plan (exercises + target sets), current session logs, "
+    "and their previous 4-5 sessions for the same split. "
     "Give SHORT, direct, actionable advice. No fluff. "
     "Consider their recent progression, fatigue indicators (RIR trends), and volume. "
+    "IMPORTANT: When the user asks about 'next weight', 'next set', or 'this exercise' "
+    "WITHOUT specifying an exercise name, figure out which exercise they mean by: "
+    "1) Check if any exercise has fewer completed sets than the target sets in the split plan — "
+    "that exercise likely has sets remaining, so the user is asking about it. "
+    "2) If all sets for the current exercise are done, they are likely asking about the NEXT exercise in the split order. "
+    "3) Use the split plan order to determine what comes next. "
     "If they ask about weight selection, look at their recent performance on that exercise "
-    "and give a specific recommendation with reasoning. "
+    "and give a specific number recommendation with reasoning. "
+    "Consider the user's training style (hypertrophy, strength, etc.) and goal (bulking, cutting, maintenance) "
+    "when recommending weights and rep ranges. "
     "Respond in plain text, 2-4 sentences max. Be like a spotter who knows their history."
 )
 
@@ -217,11 +243,32 @@ def build_session_coach_prompt(
     session,
     past_sessions: list,
     question: str,
+    split_exercises: list | None = None,
 ) -> str:
-    # Current session context
+    # Split plan context (target exercises and sets)
+    split_ctx = ""
+    if split_exercises:
+        split_ctx = "=== SPLIT PLAN (target exercises & sets for this session) ===\n"
+        for i, se in enumerate(split_exercises, 1):
+            split_ctx += f"  {i}. {se.name} — {se.default_sets} sets"
+            if se.notes:
+                split_ctx += f" (notes: {se.notes})"
+            split_ctx += "\n"
+        split_ctx += "\n"
+
+    # Build a map of exercise name -> target sets from split plan
+    target_sets_map = {}
+    if split_exercises:
+        for se in split_exercises:
+            target_sets_map[se.name.lower()] = se.default_sets
+
+    # Current session context with completion status
     current_ctx = "=== CURRENT SESSION (in progress) ===\n"
     for ex in session.exercises:
-        current_ctx += f"\n{ex.exercise_name}:\n"
+        completed_sets = len([s for s in ex.sets if not s.is_warmup])
+        target = target_sets_map.get(ex.exercise_name.lower(), "?")
+        status = "DONE" if target != "?" and completed_sets >= target else f"{completed_sets}/{target} sets done"
+        current_ctx += f"\n{ex.exercise_name} [{status}]:\n"
         if not ex.sets:
             current_ctx += "  (no sets logged yet)\n"
         for s in ex.sets:
@@ -231,7 +278,7 @@ def build_session_coach_prompt(
             current_ctx += f"  Set {s.set_number}: {s.weight_kg}kg x {s.reps} reps{rir}{warmup}{dropset}\n"
 
     # History context
-    history_ctx = f"\n=== PREVIOUS SESSIONS (same split, last 3 weeks: {len(past_sessions)} sessions) ===\n"
+    history_ctx = f"\n=== PREVIOUS SESSIONS (same split, last {len(past_sessions)} sessions) ===\n"
     for ps in past_sessions:
         ps_date = ps.started_at.strftime("%a, %b %d") if ps.started_at else "?"
         history_ctx += f"\n--- {ps_date} ---\n"
@@ -243,8 +290,52 @@ def build_session_coach_prompt(
                 rir = f", RIR {s.reps_in_reserve}" if s.reps_in_reserve is not None else ""
                 history_ctx += f"  Set {s.set_number}: {s.weight_kg}kg x {s.reps}{rir}{warmup}{dropset}\n"
 
+    training = user.training_type.value if hasattr(user, 'training_type') and user.training_type else "hypertrophy"
     return (
-        f"User: {user.goal.value} phase, {user.weight}kg bodyweight\n\n"
-        f"{current_ctx}\n{history_ctx}\n"
+        f"User: {user.goal.value} phase, {user.weight}kg bodyweight, training style: {training}\n\n"
+        f"{split_ctx}{current_ctx}\n{history_ctx}\n"
         f"User's question: {question}"
+    )
+
+
+def build_session_plan_prompt(
+    user,
+    split_exercises: list,
+    past_sessions: list,
+) -> str:
+    # Split plan
+    plan_ctx = "=== TODAY'S SPLIT PLAN ===\n"
+    for i, se in enumerate(split_exercises, 1):
+        plan_ctx += f"  {i}. {se.name} — {se.default_sets} working sets"
+        if se.notes:
+            plan_ctx += f" (notes: {se.notes})"
+        plan_ctx += "\n"
+
+    # Past sessions with dates (including gaps)
+    history_ctx = ""
+    if past_sessions:
+        history_ctx = f"\n=== PREVIOUS SESSIONS ({len(past_sessions)} sessions, most recent first) ===\n"
+        for ps in past_sessions:
+            ps_date = ps.started_at.strftime("%Y-%m-%d (%a)") if ps.started_at else "?"
+            history_ctx += f"\n--- {ps_date} ---\n"
+            for ex in ps.exercises:
+                history_ctx += f"{ex.exercise_name}:\n"
+                for s in ex.sets:
+                    warmup = " [WARMUP]" if s.is_warmup else ""
+                    dropset = " [DROPSET]" if s.is_dropset else ""
+                    rir = f", RIR {s.reps_in_reserve}" if s.reps_in_reserve is not None else ""
+                    history_ctx += f"  Set {s.set_number}: {s.weight_kg}kg x {s.reps}{rir}{warmup}{dropset}\n"
+    else:
+        history_ctx = "\n=== NO PREVIOUS SESSIONS FOUND ===\nThis is the user's first time doing this split. Suggest conservative starting weights.\n"
+
+    training = user.training_type.value if hasattr(user, 'training_type') and user.training_type else "hypertrophy"
+    return (
+        f"User: {user.goal.value} phase, {user.weight}kg bodyweight, training style: {training}\n"
+        f"Today's date: {__import__('datetime').date.today().strftime('%Y-%m-%d (%A)')}\n\n"
+        f"{plan_ctx}\n{history_ctx}\n"
+        f"Generate a complete recommended session plan with specific weights and reps for EVERY exercise in the split plan. "
+        f"Follow the exercise order from the split plan. "
+        f"Include warmup sets for the first 1-2 compound exercises. "
+        f"The user's training style is {training} — adjust rep ranges accordingly "
+        f"(hypertrophy: 8-12 reps, strength: 3-6 reps, powerbuilding: mix of both, endurance: 12-20 reps, general_fitness: 8-15 reps)."
     )

@@ -12,7 +12,7 @@ from sqlalchemy import (
 )
 
 from db.base import Base
-from .users_enum import GoalEnum, GenderEnum
+from .users_enum import GoalEnum, GenderEnum, TrainingTypeEnum
 
 
 class User(Base):
@@ -29,6 +29,12 @@ class User(Base):
 
     goal = Column(Enum(GoalEnum, name="goal_enum"), nullable=False)
     gender = Column(Enum(GenderEnum, name="gender_enum"), nullable=False)
+    training_type = Column(
+        Enum(TrainingTypeEnum, name="training_type_enum"),
+        nullable=False,
+        default=TrainingTypeEnum.HYPERTROPHY,
+        server_default="hypertrophy",
+    )
 
     mobile_number = Column(String(20), nullable=True, index=True)
     email = Column(String(255), nullable=False, unique=True, index=True)
