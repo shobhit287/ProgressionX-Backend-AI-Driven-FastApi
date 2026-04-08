@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.depends import get_db, current_user
+from core.rate_limiter import limiter
 from .diet_schema import (
     SaveDietPlanSchema,
     ResponseDietPlanSchema,
@@ -65,7 +66,9 @@ async def delete_diet_plan(
     status_code=status.HTTP_200_OK,
     response_model=DietChatResponse,
 )
+@limiter.limit("15/minute")
 async def diet_chat(
+    request: Request,
     data: DietChatRequest,
     user=Depends(current_user),
     db: AsyncSession = Depends(get_db),
@@ -80,7 +83,9 @@ async def diet_chat(
     status_code=status.HTTP_200_OK,
     response_model=GenerateDietResponse,
 )
+@limiter.limit("5/minute")
 async def generate_diet(
+    request: Request,
     data: GenerateDietRequest = None,
     user=Depends(current_user),
     db: AsyncSession = Depends(get_db),

@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.depends import get_db, current_user
+from core.rate_limiter import limiter
 from .users_schema import CreateUserSchema, UpdateUserSchema, ChangePasswordSchema, ResponseUserSchema
 from .users_service import UserService
 
@@ -13,7 +14,9 @@ router = APIRouter(prefix="/users", tags=["Users"])
     status_code=status.HTTP_201_CREATED,
     response_model=ResponseUserSchema
 )
+@limiter.limit("3/minute")
 async def create_user(
+    request: Request,
     data: CreateUserSchema,
     db: AsyncSession = Depends(get_db)
 ):

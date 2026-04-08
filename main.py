@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 from core.config import settings
 
 from features.users import users_router
@@ -13,8 +15,13 @@ from features.analytics import analytics_router
 from features.ai_analysis import ai_router
 from features.diet import diet_router as diet_router_module
 from core.exception_handlers import BaseDomainError, domain_exception_handler
+from core.rate_limiter import limiter, rate_limit_exceeded_handler
 
 app = FastAPI(title="ProgressionX API", version="1.0.0", docs_url=f"{settings.API_PREFIX}/docs")
+
+# Rate limiter
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
@@ -38,6 +45,7 @@ app.include_router(users_router.router, prefix=settings.API_PREFIX)
 app.include_router(auth_router.router, prefix=settings.API_PREFIX)
 app.include_router(workout_split_router.router, prefix=settings.API_PREFIX)
 app.include_router(split_exercise_router.router, prefix=settings.API_PREFIX)
+app.include_router(split_exercise_router.exercises_router, prefix=settings.API_PREFIX)
 app.include_router(workout_session_router.router, prefix=settings.API_PREFIX)
 app.include_router(exercise_set_router.router, prefix=settings.API_PREFIX)
 app.include_router(weight_log_router.router, prefix=settings.API_PREFIX)

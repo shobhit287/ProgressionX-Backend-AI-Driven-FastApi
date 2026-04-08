@@ -78,6 +78,9 @@ class SplitExerciseService:
         if order_map:
             await self.exercise_repository.bulk_update_order(order_map)
 
+    async def get_all_exercise_names(self, user_id: UUID) -> list[str]:
+        return await self.exercise_repository.get_all_exercise_names(user_id)
+
     async def reorder(self, split_id: UUID, user_id: UUID, order_items: list[dict]):
         await self._verify_split_ownership(split_id, user_id)
         await self.exercise_repository.bulk_update_order(order_items)

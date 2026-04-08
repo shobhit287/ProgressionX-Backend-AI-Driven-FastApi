@@ -1,9 +1,10 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, distinct
 from uuid import UUID
 
 from core.exception_handlers import BaseDomainError
 from .split_exercise_model import SplitExercise
+from features.workout_split.workout_split_model import WorkoutSplit
 
 
 class SplitExerciseRepository:
@@ -53,6 +54,15 @@ class SplitExerciseRepository:
     async def delete(self, exercise: SplitExercise) -> None:
         await self.db.delete(exercise)
         await self.db.flush()
+
+    async def get_all_exercise_names(self, user_id: UUID) -> list[str]:
+        result = await self.db.execute(
+            select(distinct(SplitExercise.name))
+            .join(WorkoutSplit, SplitExercise.split_id == WorkoutSplit.id)
+            .where(WorkoutSplit.user_id == user_id)
+            .order_by(SplitExercise.name)
+        )
+        return [row[0] for row in result.all()]
 
     async def bulk_update_order(self, order_map: list[dict]) -> None:
         for item in order_map:

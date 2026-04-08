@@ -14,6 +14,22 @@ from .split_exercise_service import SplitExerciseService
 
 router = APIRouter(prefix="/splits/{split_id}/exercises", tags=["Split Exercises"])
 
+# Separate router for user-level exercise queries (no split_id needed)
+exercises_router = APIRouter(prefix="/exercises", tags=["Exercises"])
+
+
+@exercises_router.get(
+    "/names",
+    status_code=status.HTTP_200_OK,
+    response_model=list[str],
+)
+async def get_all_exercise_names(
+    user=Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    service = SplitExerciseService(db)
+    return await service.get_all_exercise_names(user.id)
+
 
 @router.post(
     "",

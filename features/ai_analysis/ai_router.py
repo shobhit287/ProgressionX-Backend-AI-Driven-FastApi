@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.depends import get_db, current_user
+from core.rate_limiter import limiter
 from .ai_schema import (
     AnalyzeSessionsRequest,
     AnalyzeExerciseRequest,
@@ -25,7 +26,9 @@ router = APIRouter(prefix="/ai", tags=["AI Analysis"])
     status_code=status.HTTP_200_OK,
     response_model=AIAnalysisResponse,
 )
+@limiter.limit("10/minute")
 async def analyze_sessions(
+    request: Request,
     data: AnalyzeSessionsRequest,
     user=Depends(current_user),
     db: AsyncSession = Depends(get_db),
@@ -46,7 +49,9 @@ async def analyze_sessions(
     status_code=status.HTTP_200_OK,
     response_model=AIAnalysisResponse,
 )
+@limiter.limit("10/minute")
 async def analyze_exercise(
+    request: Request,
     data: AnalyzeExerciseRequest,
     user=Depends(current_user),
     db: AsyncSession = Depends(get_db),
@@ -67,7 +72,9 @@ async def analyze_exercise(
     status_code=status.HTTP_200_OK,
     response_model=AIAnalysisResponse,
 )
+@limiter.limit("10/minute")
 async def analyze_weight(
+    request: Request,
     data: AnalyzeWeightRequest,
     user=Depends(current_user),
     db: AsyncSession = Depends(get_db),
@@ -87,7 +94,9 @@ async def analyze_weight(
     status_code=status.HTTP_200_OK,
     response_model=FitnessChatResponse,
 )
+@limiter.limit("15/minute")
 async def fitness_chat(
+    request: Request,
     data: FitnessChatRequest,
     user=Depends(current_user),
     db: AsyncSession = Depends(get_db),
@@ -106,7 +115,9 @@ async def fitness_chat(
     status_code=status.HTTP_200_OK,
     response_model=SessionCoachResponse,
 )
+@limiter.limit("20/minute")
 async def session_coach(
+    request: Request,
     data: SessionCoachRequest,
     user=Depends(current_user),
     db: AsyncSession = Depends(get_db),
@@ -125,7 +136,9 @@ async def session_coach(
     status_code=status.HTTP_200_OK,
     response_model=SessionPlanResponse,
 )
+@limiter.limit("5/minute")
 async def session_plan(
+    request: Request,
     data: SessionPlanRequest,
     user=Depends(current_user),
     db: AsyncSession = Depends(get_db),
