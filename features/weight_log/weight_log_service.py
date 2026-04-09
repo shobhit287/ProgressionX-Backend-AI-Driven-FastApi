@@ -61,11 +61,12 @@ class WeightLogService:
         for log in logs:
             # ISO week: start on Monday
             week_start = log.logged_at - timedelta(days=log.logged_at.weekday())
-            weekly_data[week_start].append(log.weight_kg)
+            weekly_data[week_start].append(log)
 
         weekly_averages = []
         for week_start in sorted(weekly_data.keys()):
-            weights = weekly_data[week_start]
+            week_logs = weekly_data[week_start]
+            weights = [l.weight_kg for l in week_logs]
             weekly_averages.append({
                 "week_start": week_start,
                 "average_weight": round(sum(weights) / len(weights), 2),
@@ -85,11 +86,27 @@ class WeightLogService:
             if days_span > 0:
                 rate_of_change = round(total_change / (days_span / 7), 2)
 
+        # Collect individual entries with notes or body metrics for AI context
+        detailed_entries = []
+        for log in logs:
+            entry = {
+                "date": str(log.logged_at),
+                "weight_kg": log.weight_kg,
+            }
+            if log.waist_cm is not None:
+                entry["waist_cm"] = log.waist_cm
+            if log.body_fat_pct is not None:
+                entry["body_fat_pct"] = log.body_fat_pct
+            if log.description:
+                entry["note"] = log.description
+            detailed_entries.append(entry)
+
         return {
             "weekly_averages": weekly_averages,
             "rate_of_change": rate_of_change,
             "total_change": total_change,
             "entries": len(logs),
+            "detailed_entries": detailed_entries,
         }
 
     async def delete(self, log_id: UUID, user_id: UUID):

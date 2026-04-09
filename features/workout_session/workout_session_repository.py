@@ -2,6 +2,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc
 from sqlalchemy.orm import selectinload
 from uuid import UUID
+from datetime import date, timedelta
 
 from core.exception_handlers import BaseDomainError
 from .workout_session_model import WorkoutSession
@@ -87,8 +88,11 @@ class WorkoutSessionRepository:
             count_query = count_query.where(WorkoutSession.started_at >= filters["from_date"])
 
         if filters.get("to_date"):
-            query = query.where(WorkoutSession.started_at <= filters["to_date"])
-            count_query = count_query.where(WorkoutSession.started_at <= filters["to_date"])
+            to_date = filters["to_date"]
+            if isinstance(to_date, date):
+                to_date = to_date + timedelta(days=1)
+            query = query.where(WorkoutSession.started_at < to_date)
+            count_query = count_query.where(WorkoutSession.started_at < to_date)
 
         total_result = await self.db.execute(count_query)
         total = total_result.scalar()

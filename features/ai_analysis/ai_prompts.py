@@ -59,6 +59,8 @@ SESSION_COACH_SYSTEM_INSTRUCTION = (
     "3) Use the split plan order to determine what comes next. "
     "If they ask about weight selection, look at their recent performance on that exercise "
     "and give a specific number recommendation with reasoning. "
+    "IMPORTANT: Pay attention to set notes (marked with '— note:') — they contain user feedback like "
+    "unilateral imbalances, drop sets, grip issues, or form cues that should influence your recommendation. "
     "Consider the user's training style (hypertrophy, strength, etc.) and goal (bulking, cutting, maintenance) "
     "when recommending weights and rep ranges. "
     "Respond in plain text, 2-4 sentences max. Be like a spotter who knows their history."
@@ -170,6 +172,20 @@ def build_weight_analysis_prompt(
             f"({wa['entries']} entries)\n"
         )
 
+    # Include individual log entries with body metrics and user notes
+    detailed = analytics.get("detailed_entries", [])
+    if detailed:
+        context += "\nDetailed log entries:\n"
+        for entry in detailed:
+            line = f"- {entry['date']}: {entry['weight_kg']}kg"
+            if "waist_cm" in entry:
+                line += f", waist {entry['waist_cm']}cm"
+            if "body_fat_pct" in entry:
+                line += f", body fat {entry['body_fat_pct']}%"
+            if "note" in entry:
+                line += f" — note: {entry['note']}"
+            context += line + "\n"
+
     goal = user.goal.value
     prompt = f"{context}\n"
 
@@ -197,6 +213,12 @@ def build_weight_analysis_prompt(
             "3. Weekly consistency of weight logging\n"
             "4. Recommendations for maintaining\n"
         )
+
+    prompt += (
+        "IMPORTANT: Pay attention to any user notes on log entries — they contain context like "
+        "missed meals, cheat days, water retention, illness, etc. that explain weight fluctuations "
+        "and should inform your analysis.\n"
+    )
 
     if question:
         prompt += f"\nThe user specifically asks: {question}\n"
@@ -275,7 +297,8 @@ def build_session_coach_prompt(
             warmup = " [WARMUP]" if s.is_warmup else ""
             dropset = " [DROPSET]" if s.is_dropset else ""
             rir = f", RIR {s.reps_in_reserve}" if s.reps_in_reserve is not None else ""
-            current_ctx += f"  Set {s.set_number}: {s.weight_kg}kg x {s.reps} reps{rir}{warmup}{dropset}\n"
+            desc = f" — note: {s.description}" if s.description else ""
+            current_ctx += f"  Set {s.set_number}: {s.weight_kg}kg x {s.reps} reps{rir}{warmup}{dropset}{desc}\n"
 
     # History context
     history_ctx = f"\n=== PREVIOUS SESSIONS (same split, last {len(past_sessions)} sessions) ===\n"
@@ -288,7 +311,8 @@ def build_session_coach_prompt(
                 warmup = " [W]" if s.is_warmup else ""
                 dropset = " [D]" if s.is_dropset else ""
                 rir = f", RIR {s.reps_in_reserve}" if s.reps_in_reserve is not None else ""
-                history_ctx += f"  Set {s.set_number}: {s.weight_kg}kg x {s.reps}{rir}{warmup}{dropset}\n"
+                desc = f" — note: {s.description}" if s.description else ""
+                history_ctx += f"  Set {s.set_number}: {s.weight_kg}kg x {s.reps}{rir}{warmup}{dropset}{desc}\n"
 
     training = user.training_type.value if hasattr(user, 'training_type') and user.training_type else "hypertrophy"
     return (
@@ -324,7 +348,8 @@ def build_session_plan_prompt(
                     warmup = " [WARMUP]" if s.is_warmup else ""
                     dropset = " [DROPSET]" if s.is_dropset else ""
                     rir = f", RIR {s.reps_in_reserve}" if s.reps_in_reserve is not None else ""
-                    history_ctx += f"  Set {s.set_number}: {s.weight_kg}kg x {s.reps}{rir}{warmup}{dropset}\n"
+                    desc = f" — note: {s.description}" if s.description else ""
+                    history_ctx += f"  Set {s.set_number}: {s.weight_kg}kg x {s.reps}{rir}{warmup}{dropset}{desc}\n"
     else:
         history_ctx = "\n=== NO PREVIOUS SESSIONS FOUND ===\nThis is the user's first time doing this split. Suggest conservative starting weights.\n"
 
