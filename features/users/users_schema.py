@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field, EmailStr
 from typing import Optional
 from uuid import UUID
 from datetime import datetime
-from .users_enum import GoalEnum, GenderEnum, TrainingTypeEnum
+from .users_enum import GoalEnum, GenderEnum, TrainingTypeEnum, ExperienceLevelEnum
 
 
 # Create User Schema
@@ -20,6 +20,11 @@ class CreateUserSchema(BaseModel):
         TrainingTypeEnum.HYPERTROPHY,
         alias="trainingType",
         description="Training style preference",
+    )
+    experience_level: ExperienceLevelEnum = Field(
+        ExperienceLevelEnum.BEGINNER,
+        alias="experienceLevel",
+        description="Lifting experience level",
     )
 
     mobile_number: Optional[str] = Field(None, alias="mobileNumber", description="Mobile number of the user")
@@ -58,6 +63,7 @@ class UpdateUserSchema(BaseModel):
     goal: Optional[GoalEnum] = Field(None)
     gender: Optional[GenderEnum] = Field(None)
     training_type: Optional[TrainingTypeEnum] = Field(None, alias="trainingType")
+    experience_level: Optional[ExperienceLevelEnum] = Field(None, alias="experienceLevel")
     activity_level: Optional[str] = Field(None, alias="activityLevel")
 
     mobile_number: Optional[str] = Field(None, alias="mobileNumber")
@@ -99,6 +105,7 @@ class ResponseUserSchema(BaseModel):
     goal: GoalEnum = Field(...)
     gender: GenderEnum = Field(...)
     training_type: TrainingTypeEnum = Field(..., alias="trainingType")
+    experience_level: ExperienceLevelEnum = Field(..., alias="experienceLevel")
     activity_level: Optional[str] = Field(None, alias="activityLevel")
 
     mobile_number: Optional[str] = Field(None, alias="mobileNumber")

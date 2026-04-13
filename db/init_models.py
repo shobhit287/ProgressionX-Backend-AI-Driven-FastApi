@@ -5,3 +5,4 @@ from features.workout_session.workout_session_model import WorkoutSession
 from features.workout_session.session_exercise_model import SessionExercise
 from features.exercise_set.exercise_set_model import ExerciseSet
 from features.weight_log.weight_log_model import WeightLog
+from features.diet.diet_model import DietPlan

@@ -105,15 +105,35 @@ class GroqClient:
         system_instruction: str,
         max_tokens: int = 1024,
     ) -> dict:
-        raw = await self.generate(
-            prompt,
-            system_instruction=system_instruction,
-            max_tokens=max_tokens,
-        )
+        try:
+            response = await self._client.chat.completions.create(
+                model=self.MODEL,
+                messages=[
+                    {"role": "system", "content": system_instruction},
+                    {"role": "user", "content": prompt},
+                ],
+                max_tokens=max_tokens,
+                response_format={"type": "json_object"},
+            )
+            raw = response.choices[0].message.content
+        except Exception as e:
+            if _is_rate_limit_error(e):
+                logger.warning(f"Groq rate limit hit: {e}")
+                raise BaseDomainError("AI is temporarily busy. Please try again in a minute.", 503)
+            logger.error(f"Groq API error: {type(e).__name__} - {e}")
+            raise BaseDomainError("AI service is currently unavailable. Please try again later.", 503)
+
         return self._parse_json(raw)
 
     @staticmethod
     def _parse_json(text: str) -> dict:
+        """Parse JSON from LLM output. Returns the full parsed dict.
+
+        Falls back to the analysis-style shape on decode failure so existing
+        analysis endpoints degrade gracefully.
+        """
+        if text is None:
+            return {"analysis": "", "suggestions": []}
         cleaned = text.strip()
         if cleaned.startswith("```"):
             cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned[3:]
@@ -121,11 +141,11 @@ class GroqClient:
                 cleaned = cleaned[:-3].strip()
         try:
             parsed = json.loads(cleaned)
-            return {
-                "analysis": parsed.get("analysis", text),
-                "suggestions": parsed.get("suggestions", []),
-            }
+            if isinstance(parsed, dict):
+                return parsed
+            return {"analysis": text, "suggestions": []}
         except json.JSONDecodeError:
+            logger.warning(f"Failed to parse JSON from LLM. Raw: {text[:300]}")
             return {"analysis": text, "suggestions": []}
 
 

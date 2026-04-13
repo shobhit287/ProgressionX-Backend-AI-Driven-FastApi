@@ -13,7 +13,7 @@ from sqlalchemy import (
 )
 
 from db.base import Base
-from .users_enum import GoalEnum, GenderEnum, TrainingTypeEnum
+from .users_enum import GoalEnum, GenderEnum, TrainingTypeEnum, ExperienceLevelEnum
 
 
 class User(Base):
@@ -38,6 +38,13 @@ class User(Base):
     )
 
     activity_level = Column(Text, nullable=True)
+
+    experience_level = Column(
+        Enum(ExperienceLevelEnum, name="experience_level_enum"),
+        nullable=False,
+        default=ExperienceLevelEnum.BEGINNER,
+        server_default="BEGINNER",
+    )
 
     mobile_number = Column(String(20), nullable=True, index=True)
     email = Column(String(255), nullable=False, unique=True, index=True)

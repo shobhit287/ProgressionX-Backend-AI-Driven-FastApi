@@ -7,6 +7,7 @@ from .workout_split_schema import (
     CreateWorkoutSplitSchema,
     UpdateWorkoutSplitSchema,
     ResponseWorkoutSplitSchema,
+    BulkScheduleSchema,
 )
 from .workout_split_service import WorkoutSplitService
 
@@ -42,6 +43,23 @@ async def get_all_splits(
 ):
     service = WorkoutSplitService(db)
     splits = await service.get_all(user.id)
+    return splits
+
+
+@router.post(
+    "/bulk-replace-schedule",
+    status_code=status.HTTP_200_OK,
+    response_model=list[ResponseWorkoutSplitSchema],
+)
+async def bulk_replace_schedule(
+    data: BulkScheduleSchema,
+    user=Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    service = WorkoutSplitService(db)
+    payload = data.model_dump()
+    splits = await service.bulk_replace_schedule(user.id, payload["days"])
+    await db.commit()
     return splits
 
 

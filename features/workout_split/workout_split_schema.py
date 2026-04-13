@@ -39,6 +39,33 @@ class UpdateWorkoutSplitSchema(BaseModel):
     }
 
 
+class BulkScheduleExerciseSchema(BaseModel):
+    name: str = Field(...)
+    display_order: int = Field(..., alias="displayOrder")
+    default_sets: int = Field(3, alias="defaultSets")
+    exercise_type: str = Field("standard", alias="exerciseType")
+    rest_seconds: int = Field(90, alias="restSeconds")
+    notes: Optional[str] = Field(None)
+
+    model_config = {"populate_by_name": True}
+
+
+class BulkScheduleDaySchema(BaseModel):
+    day: DayEnum = Field(...)
+    name: str = Field(...)
+    description: Optional[str] = Field(None)
+    is_rest: bool = Field(False, alias="isRest")
+    exercises: list[BulkScheduleExerciseSchema] = Field(default_factory=list)
+
+    model_config = {"populate_by_name": True}
+
+
+class BulkScheduleSchema(BaseModel):
+    days: list[BulkScheduleDaySchema] = Field(...)
+
+    model_config = {"populate_by_name": True}
+
+
 class ResponseWorkoutSplitSchema(BaseModel):
     id: UUID = Field(...)
     name: str = Field(...)

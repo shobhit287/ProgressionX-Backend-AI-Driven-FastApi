@@ -26,7 +26,7 @@ from db.base import Base
 import db.init_models  # noqa – register models
 
 from features.users.users_model import User
-from features.users.users_enum import GoalEnum, GenderEnum, TrainingTypeEnum
+from features.users.users_enum import GoalEnum, GenderEnum, TrainingTypeEnum, ExperienceLevelEnum
 from features.workout_split.workout_split_model import WorkoutSplit
 from features.workout_split.workout_split_enum import DayEnum
 from features.split_exercise.split_exercise_model import SplitExercise
@@ -66,6 +66,7 @@ USERS = [
         "goal": GoalEnum.BULKING,
         "gender": GenderEnum.MALE,
         "training_type": TrainingTypeEnum.HYPERTROPHY,
+        "experience_level": ExperienceLevelEnum.INTERMEDIATE,
         "activity_level": "moderately_active",
     },
     {
@@ -79,6 +80,7 @@ USERS = [
         "goal": GoalEnum.CUTTING,
         "gender": GenderEnum.FEMALE,
         "training_type": TrainingTypeEnum.HYPERTROPHY,
+        "experience_level": ExperienceLevelEnum.BEGINNER,
         "activity_level": "very_active",
     },
     {
@@ -92,6 +94,7 @@ USERS = [
         "goal": GoalEnum.BULKING,
         "gender": GenderEnum.MALE,
         "training_type": TrainingTypeEnum.STRENGTH,
+        "experience_level": ExperienceLevelEnum.ADVANCED,
         "activity_level": "very_active",
     },
 ]
@@ -496,6 +499,7 @@ async def seed():
                 goal=profile["goal"],
                 gender=profile["gender"],
                 training_type=profile["training_type"],
+                experience_level=profile["experience_level"],
                 activity_level=profile["activity_level"],
                 is_active=True,
             )

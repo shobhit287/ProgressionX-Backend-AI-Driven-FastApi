@@ -16,3 +16,8 @@ class TrainingTypeEnum(str, Enum):
     POWERBUILDING = "powerbuilding"
     ENDURANCE = "endurance"
     GENERAL_FITNESS = "general_fitness"
+
+class ExperienceLevelEnum(str, Enum):
+    BEGINNER = "beginner"
+    INTERMEDIATE = "intermediate"
+    ADVANCED = "advanced"

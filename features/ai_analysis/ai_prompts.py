@@ -44,6 +44,45 @@ SESSION_PLAN_SYSTEM_INSTRUCTION = (
     "Do NOT include any text outside the JSON. Only JSON."
 )
 
+WEEKLY_SCHEDULE_SYSTEM_INSTRUCTION = (
+    "You are an expert strength & conditioning coach building a weekly training split for a user. "
+    "Use their goal, training type, experience level, and activity level to choose an appropriate split "
+    "(e.g. full-body for beginners, upper/lower or PPL for intermediate, advanced bro/PPL for advanced). "
+    "Rules:\n"
+    "1. The schedule MUST cover all 7 days from monday to sunday in that order.\n"
+    "2. Sunday is ALWAYS a rest day. If goal is 'cutting', label it 'Active Recovery — Walking' with isRest=true and zero exercises. Otherwise label it 'Rest Day' with isRest=true and zero exercises.\n"
+    "3. Beginners: 3-4 training days, simple compound-focused full-body or upper/lower. Rest days between training days.\n"
+    "4. Intermediate: 4-5 training days, upper/lower or push/pull/legs.\n"
+    "5. Advanced: 5-6 training days, PPL or bro split with higher volume and more isolation work.\n"
+    "6. Pick exercise count per day based on experience: beginner 4-5, intermediate 5-7, advanced 6-9.\n"
+    "7. Choose default sets based on training type: hypertrophy 3-4, strength 4-5, powerbuilding 3-5, endurance 2-3, general_fitness 3.\n"
+    "8. Choose rest_seconds based on training type: hypertrophy 90, strength 180, powerbuilding 120, endurance 60, general_fitness 90.\n"
+    "9. exerciseType is almost always 'standard'. Only use 'superset' for accessory pairings on intermediate/advanced.\n"
+    "10. Use real, well-known exercise names (e.g. 'Barbell Bench Press', 'Romanian Deadlift', 'Lat Pulldown').\n"
+    "11. displayOrder starts at 1 within each day and increments.\n"
+    "You MUST respond with valid JSON in this exact format and NOTHING else:\n"
+    '{"days": [{"day": "monday", "name": "Push Day", "description": "Chest, shoulders, triceps", "isRest": false, "exercises": [{"name": "Barbell Bench Press", "displayOrder": 1, "defaultSets": 4, "exerciseType": "standard", "restSeconds": 120, "notes": null}]}]}\n'
+    "Do NOT include any text outside the JSON."
+)
+
+
+def build_weekly_schedule_prompt(user) -> str:
+    goal = user.goal.value if user.goal else "maintenance"
+    training = user.training_type.value if user.training_type else "hypertrophy"
+    experience = user.experience_level.value if getattr(user, "experience_level", None) else "beginner"
+    activity = user.activity_level or "moderate"
+    return (
+        f"Build a weekly workout split for this user.\n\n"
+        f"Goal: {goal}\n"
+        f"Training type: {training}\n"
+        f"Experience level: {experience}\n"
+        f"Activity level: {activity}\n"
+        f"Age: {user.age}, Gender: {user.gender.value}, Weight: {user.weight}kg, Height: {user.height}cm\n\n"
+        f"Generate the full 7-day schedule (monday → sunday). Sunday must be rest "
+        f"(or active walking recovery if goal is cutting). Return JSON only."
+    )
+
+
 SESSION_COACH_SYSTEM_INSTRUCTION = (
     "You are a real-time gym coach embedded in a workout tracking app. "
     "The user is mid-session and asking you a quick question about their current workout. "
@@ -69,15 +108,26 @@ SESSION_COACH_SYSTEM_INSTRUCTION = (
 
 # ── prompt builders ──────────────────────────────────────────────────
 
+def _user_profile_line(user) -> str:
+    """Compact one-line user profile for prompts."""
+    training = user.training_type.value if getattr(user, "training_type", None) else "hypertrophy"
+    experience = user.experience_level.value if getattr(user, "experience_level", None) else "beginner"
+    activity = getattr(user, "activity_level", None) or "unspecified"
+    return (
+        f"Goal = {user.goal.value}, Training type = {training}, "
+        f"Experience = {experience}, Activity = {activity}, "
+        f"Weight = {user.weight}kg, Height = {user.height}cm, "
+        f"Age = {user.age}, Gender = {user.gender.value}"
+    )
+
+
 def build_session_analysis_prompt(
     user,
     sessions: list[dict],
     question: str | None = None,
 ) -> str:
     context = (
-        f"User profile: Goal = {user.goal.value}, "
-        f"Weight = {user.weight}kg, Height = {user.height}cm, "
-        f"Age = {user.age}, Gender = {user.gender.value}\n\n"
+        f"User profile: {_user_profile_line(user)}\n\n"
         f"Workout session data ({len(sessions)} sessions):\n"
     )
 
@@ -112,8 +162,7 @@ def build_exercise_analysis_prompt(
     question: str | None = None,
 ) -> str:
     context = (
-        f"User profile: Goal = {user.goal.value}, "
-        f"Weight = {user.weight}kg\n\n"
+        f"User profile: {_user_profile_line(user)}\n\n"
         f"Exercise: {exercise_name}\n"
         f"Data points ({len(data_points)} sessions):\n"
     )
@@ -156,9 +205,7 @@ def build_weight_analysis_prompt(
     weekly_avgs = analytics["weekly_averages"]
 
     context = (
-        f"User profile: Goal = {user.goal.value}, "
-        f"Weight = {user.weight}kg, Height = {user.height}cm, "
-        f"Age = {user.age}, Gender = {user.gender.value}\n\n"
+        f"User profile: {_user_profile_line(user)}\n\n"
         f"Weight log analytics:\n"
         f"Total change: {analytics['total_change']}kg\n"
         f"Rate of change: {analytics['rate_of_change']}kg/week\n"
@@ -233,9 +280,7 @@ def build_fitness_chat_prompt(
     question: str,
 ) -> str:
     context = (
-        f"User profile: Name = {user.first_name}, Goal = {user.goal.value}, "
-        f"Weight = {user.weight}kg, Height = {user.height}cm, "
-        f"Age = {user.age}, Gender = {user.gender.value}\n\n"
+        f"User profile: Name = {user.first_name}, {_user_profile_line(user)}\n\n"
     )
 
     if recent_sessions:
@@ -314,9 +359,8 @@ def build_session_coach_prompt(
                 desc = f" — note: {s.description}" if s.description else ""
                 history_ctx += f"  Set {s.set_number}: {s.weight_kg}kg x {s.reps}{rir}{warmup}{dropset}{desc}\n"
 
-    training = user.training_type.value if hasattr(user, 'training_type') and user.training_type else "hypertrophy"
     return (
-        f"User: {user.goal.value} phase, {user.weight}kg bodyweight, training style: {training}\n\n"
+        f"User: {_user_profile_line(user)}\n\n"
         f"{split_ctx}{current_ctx}\n{history_ctx}\n"
         f"User's question: {question}"
     )
@@ -354,13 +398,16 @@ def build_session_plan_prompt(
         history_ctx = "\n=== NO PREVIOUS SESSIONS FOUND ===\nThis is the user's first time doing this split. Suggest conservative starting weights.\n"
 
     training = user.training_type.value if hasattr(user, 'training_type') and user.training_type else "hypertrophy"
+    experience = user.experience_level.value if getattr(user, "experience_level", None) else "beginner"
     return (
-        f"User: {user.goal.value} phase, {user.weight}kg bodyweight, training style: {training}\n"
+        f"User: {_user_profile_line(user)}\n"
         f"Today's date: {__import__('datetime').date.today().strftime('%Y-%m-%d (%A)')}\n\n"
         f"{plan_ctx}\n{history_ctx}\n"
         f"Generate a complete recommended session plan with specific weights and reps for EVERY exercise in the split plan. "
         f"Follow the exercise order from the split plan. "
         f"Include warmup sets for the first 1-2 compound exercises. "
         f"The user's training style is {training} — adjust rep ranges accordingly "
-        f"(hypertrophy: 8-12 reps, strength: 3-6 reps, powerbuilding: mix of both, endurance: 12-20 reps, general_fitness: 8-15 reps)."
+        f"(hypertrophy: 8-12 reps, strength: 3-6 reps, powerbuilding: mix of both, endurance: 12-20 reps, general_fitness: 8-15 reps). "
+        f"Experience level is {experience} — for beginners use very conservative starting weights and add more warmup sets; "
+        f"for advanced users be more aggressive with progressive overload."
     )

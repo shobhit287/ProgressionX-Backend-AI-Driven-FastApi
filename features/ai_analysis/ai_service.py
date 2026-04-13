@@ -6,6 +6,7 @@ from sqlalchemy import select, cast, Date
 from sqlalchemy.orm import selectinload
 
 from core.groq_client import groq_client
+from core.exception_handlers import BaseDomainError
 from features.users.users_model import User
 from features.analytics.analytics_service import AnalyticsService
 from features.weight_log.weight_log_service import WeightLogService
@@ -18,12 +19,14 @@ from .ai_prompts import (
     SESSION_COACH_SYSTEM_INSTRUCTION,
     SESSION_PLAN_SYSTEM_INSTRUCTION,
     FITNESS_CHAT_SYSTEM_INSTRUCTION,
+    WEEKLY_SCHEDULE_SYSTEM_INSTRUCTION,
     build_session_analysis_prompt,
     build_exercise_analysis_prompt,
     build_weight_analysis_prompt,
     build_session_coach_prompt,
     build_fitness_chat_prompt,
     build_session_plan_prompt,
+    build_weekly_schedule_prompt,
 )
 
 
@@ -113,12 +116,14 @@ class AIService:
         )
         recent_sessions = session_data.get("sessions", [])
 
-        # Fetch weight analytics for context
+        # Fetch weight analytics for context — tolerate missing logs but don't swallow real errors
+        weight_analytics = None
         try:
             weight_analytics = await self.weight_log.get_analytics(
                 user_id, from_date=four_weeks_ago
             )
-        except Exception:
+        except BaseDomainError:
+            # No logs yet — fine for new users
             weight_analytics = None
 
         context_prompt = build_fitness_chat_prompt(
@@ -193,7 +198,7 @@ class AIService:
         answer = await groq_client.generate(
             prompt,
             system_instruction=SESSION_COACH_SYSTEM_INSTRUCTION,
-            max_tokens=300,
+            max_tokens=600,
         )
         return {"answer": answer}
 
@@ -258,6 +263,72 @@ class AIService:
         )
 
         return self._parse_session_plan(raw)
+
+    # ── weekly schedule generation ───────────────────────────────────
+
+    async def generate_weekly_schedule(self, user_id: UUID) -> dict:
+        user = await self._get_user(user_id)
+        prompt = build_weekly_schedule_prompt(user)
+        result = await groq_client.generate_json(
+            prompt,
+            system_instruction=WEEKLY_SCHEDULE_SYSTEM_INSTRUCTION,
+            max_tokens=3000,
+        )
+        return self._normalize_weekly_schedule(result, user)
+
+    @staticmethod
+    def _normalize_weekly_schedule(parsed: dict, user) -> dict:
+        days_order = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+        raw_days = parsed.get("days") if isinstance(parsed, dict) else None
+        if not isinstance(raw_days, list):
+            raw_days = []
+
+        by_day = {}
+        for d in raw_days:
+            if not isinstance(d, dict):
+                continue
+            day = str(d.get("day", "")).strip().lower()
+            if day in days_order:
+                by_day[day] = d
+
+        cutting = user.goal and user.goal.value == "cutting"
+        normalized = []
+        for day in days_order:
+            d = by_day.get(day) or {}
+            is_rest = bool(d.get("isRest") or d.get("is_rest"))
+            exercises_raw = d.get("exercises") or []
+
+            if day == "sunday":
+                is_rest = True
+                name = "Active Recovery — Walking" if cutting else "Rest Day"
+                description = "20-40 minute easy walk" if cutting else "Full rest"
+                exercises = []
+            else:
+                name = d.get("name") or day.capitalize()
+                description = d.get("description") or ""
+                exercises = []
+                if not is_rest and isinstance(exercises_raw, list):
+                    for i, ex in enumerate(exercises_raw, 1):
+                        if not isinstance(ex, dict):
+                            continue
+                        exercises.append({
+                            "name": ex.get("name") or "Exercise",
+                            "displayOrder": int(ex.get("displayOrder") or ex.get("display_order") or i),
+                            "defaultSets": int(ex.get("defaultSets") or ex.get("default_sets") or 3),
+                            "exerciseType": ex.get("exerciseType") or ex.get("exercise_type") or "standard",
+                            "restSeconds": int(ex.get("restSeconds") or ex.get("rest_seconds") or 90),
+                            "notes": ex.get("notes"),
+                        })
+
+            normalized.append({
+                "day": day,
+                "name": name,
+                "description": description,
+                "isRest": is_rest,
+                "exercises": exercises,
+            })
+
+        return {"days": normalized}
 
     @staticmethod
     def _parse_session_plan(raw: str) -> dict:

@@ -1,9 +1,13 @@
 from datetime import datetime
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import delete as sql_delete
 
 from .workout_split_repository import WorkoutSplitRepository
 from .workout_split_enum import DayEnum
+from features.split_exercise.split_exercise_model import SplitExercise
+from features.split_exercise.split_exercise_enum import ExerciseTypeEnum
+from .workout_split_model import WorkoutSplit
 
 
 class WorkoutSplitService:
@@ -34,3 +38,51 @@ class WorkoutSplitService:
     async def delete(self, split_id: UUID, user_id: UUID):
         split = await self.workout_split_repository.get_by_id(split_id, user_id)
         await self.workout_split_repository.delete(split)
+
+    async def bulk_replace_schedule(self, user_id: UUID, days: list[dict]):
+        """Replace user's full weekly schedule.
+
+        For each day, reuse the existing split row (preserves FK from sessions)
+        and rewrite its exercises. Create the split row if missing.
+        """
+        db = self.workout_split_repository.db
+        existing = await self.workout_split_repository.get_all_by_user(user_id)
+        by_day = {s.day: s for s in existing}
+
+        seen_days = set()
+        for d in days:
+            day_enum = d["day"] if isinstance(d["day"], DayEnum) else DayEnum(d["day"])
+            seen_days.add(day_enum)
+            split = by_day.get(day_enum)
+
+            if split is None:
+                split = WorkoutSplit(
+                    user_id=user_id,
+                    day=day_enum,
+                    name=d["name"],
+                    description=d.get("description"),
+                )
+                db.add(split)
+                await db.flush()
+            else:
+                split.name = d["name"]
+                split.description = d.get("description")
+                await db.execute(
+                    sql_delete(SplitExercise).where(SplitExercise.split_id == split.id)
+                )
+                await db.flush()
+
+            if not d.get("is_rest"):
+                for ex in d.get("exercises", []):
+                    db.add(SplitExercise(
+                        split_id=split.id,
+                        name=ex["name"],
+                        display_order=ex["display_order"],
+                        default_sets=ex.get("default_sets", 3),
+                        exercise_type=ExerciseTypeEnum(ex.get("exercise_type", "standard")),
+                        rest_seconds=ex.get("rest_seconds", 90),
+                        notes=ex.get("notes"),
+                    ))
+                await db.flush()
+
+        return await self.workout_split_repository.get_all_by_user(user_id)

@@ -59,7 +59,7 @@ class DietService:
         ctx = (
             f"User profile: {user.first_name}, {user.age}yo {user.gender.value}, "
             f"{user.weight}kg, {user.height}cm\n"
-            f"Goal: {user.goal.value}, Training type: {training}\n"
+            f"Goal: {user.goal.value}, Experience Level: {user.experience_level.value}, Training type: {training}\n"
         )
         if user.activity_level:
             ctx += f"Activity level: {user.activity_level}\n"

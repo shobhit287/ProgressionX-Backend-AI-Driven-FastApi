@@ -14,6 +14,7 @@ from .ai_schema import (
     FitnessChatResponse,
     SessionPlanRequest,
     SessionPlanResponse,
+    WeeklyScheduleResponse,
 )
 from .ai_service import AIService
 
@@ -129,6 +130,21 @@ async def session_coach(
         question=data.question,
     )
     return result
+
+
+@router.post(
+    "/generate-weekly-schedule",
+    status_code=status.HTTP_200_OK,
+    response_model=WeeklyScheduleResponse,
+)
+@limiter.limit("3/hour")
+async def generate_weekly_schedule(
+    request: Request,
+    user=Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    service = AIService(db)
+    return await service.generate_weekly_schedule(user.id)
 
 
 @router.post(
