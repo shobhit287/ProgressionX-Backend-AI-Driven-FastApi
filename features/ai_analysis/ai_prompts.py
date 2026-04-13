@@ -57,7 +57,7 @@ WEEKLY_SCHEDULE_SYSTEM_INSTRUCTION = (
     "6. Pick exercise count per day based on experience: beginner 4-5, intermediate 5-7, advanced 6-9.\n"
     "7. Choose default sets based on training type: hypertrophy 3-4, strength 4-5, powerbuilding 3-5, endurance 2-3, general_fitness 3.\n"
     "8. Choose rest_seconds based on training type: hypertrophy 90, strength 180, powerbuilding 120, endurance 60, general_fitness 90.\n"
-    "9. exerciseType is almost always 'standard'. Only use 'superset' for accessory pairings on intermediate/advanced.\n"
+    "9. exerciseType MUST be one of: 'standard', 'superset', 'dropset'. Do NOT use 'compound' or 'isolation'. Only use 'superset' for accessory pairings on intermediate/advanced.\n"
     "10. Use real, well-known exercise names (e.g. 'Barbell Bench Press', 'Romanian Deadlift', 'Lat Pulldown').\n"
     "11. displayOrder starts at 1 within each day and increments.\n"
     "You MUST respond with valid JSON in this exact format and NOTHING else:\n"
@@ -66,21 +66,99 @@ WEEKLY_SCHEDULE_SYSTEM_INSTRUCTION = (
 )
 
 
-def build_weekly_schedule_prompt(user) -> str:
+SPLIT_CUSTOMIZATION_SYSTEM_INSTRUCTION = (
+    "You are an expert strength coach customizing a specific workout split for a user. "
+    "The user wants to update ONE specific day of their training week. "
+    "You will be given their current split for that day, their overall weekly split structure "
+    "(to ensure balance), and their specific preferences or feedback. "
+    "Rules:\n"
+    "1. You MUST generate a replacement for the specific day requested.\n"
+    "2. Use the user's preferences to guide exercise selection.\n"
+    "3. Ensure the new exercises complement their other existing splits.\n"
+    "4. Choose default sets and rest based on their training type (hypertrophy, strength, etc.).\n"
+    "5. Use real, well-known exercise names.\n"
+    "6. exerciseType MUST be one of: 'standard', 'superset', 'dropset'. Do NOT use 'compound' or 'isolation'.\n"
+    "You MUST respond with valid JSON in this exact format and NOTHING else:\n"
+    '{"day": "monday", "name": "Push Day", "description": "Chest, shoulders, triceps", "isRest": false, "exercises": [{"name": "Barbell Bench Press", "displayOrder": 1, "defaultSets": 4, "exerciseType": "standard", "restSeconds": 120, "notes": null}]}\n'
+    "Do NOT include any text outside the JSON."
+)
+
+
+def build_weekly_schedule_prompt(user, preferences: str | None = None) -> str:
     goal = user.goal.value if user.goal else "maintenance"
     training = user.training_type.value if user.training_type else "hypertrophy"
     experience = user.experience_level.value if getattr(user, "experience_level", None) else "beginner"
     activity = user.activity_level or "moderate"
-    return (
+    prompt = (
         f"Build a weekly workout split for this user.\n\n"
         f"Goal: {goal}\n"
         f"Training type: {training}\n"
         f"Experience level: {experience}\n"
         f"Activity level: {activity}\n"
         f"Age: {user.age}, Gender: {user.gender.value}, Weight: {user.weight}kg, Height: {user.height}cm\n\n"
+    )
+
+    if preferences:
+        prompt += f"USER PREFERENCES / FEEDBACK:\n\"{preferences}\"\n\n"
+
+    prompt += (
         f"Generate the full 7-day schedule (monday → sunday). Sunday must be rest "
         f"(or active walking recovery if goal is cutting). Return JSON only."
     )
+    return prompt
+
+
+def build_split_customization_prompt(
+    user,
+    all_splits: list,
+    target_split,
+    target_exercises: list,
+    preferences: str | None = None
+) -> str:
+    """
+    all_splits: list of WorkoutSplit objects (excluding target_split possibly, or all)
+    target_split: the WorkoutSplit to customize
+    target_exercises: list of SplitExercise objects for target_split
+    """
+    goal = user.goal.value if user.goal else "maintenance"
+    training = user.training_type.value if user.training_type else "hypertrophy"
+    experience = user.experience_level.value if getattr(user, "experience_level", None) else "beginner"
+
+    context = (
+        f"User: {_user_profile_line(user)}\n\n"
+        f"=== OVERALL WEEKLY STRUCTURE ===\n"
+    )
+    for s in all_splits:
+        context += f"- {s.day.capitalize()}: {s.name}"
+        if s.id == target_split.id:
+            context += " [TARGET FOR CUSTOMIZATION]"
+        context += "\n"
+
+    context += f"\n=== CURRENT PLAN FOR {target_split.day.upper()} ({target_split.name}) ===\n"
+    if target_exercises:
+        for i, ex in enumerate(target_exercises, 1):
+            context += f"  {i}. {ex.name} — {ex.default_sets} sets"
+            if ex.notes:
+                context += f" (notes: {ex.notes})"
+            context += "\n"
+    else:
+        context += "  (no exercises currently)\n"
+
+    prompt = (
+        f"{context}\n"
+        f"Customize the {target_split.day} split based on the following feedback:\n"
+    )
+
+    if preferences:
+        prompt += f"USER FEEDBACK: \"{preferences}\"\n\n"
+    else:
+        prompt += "Optimize the exercises for the user's goal and current experience level.\n\n"
+
+    prompt += (
+        f"Generate a replacement for the {target_split.day} split. "
+        f"Return JSON only for this ONE day."
+    )
+    return prompt
 
 
 SESSION_COACH_SYSTEM_INSTRUCTION = (

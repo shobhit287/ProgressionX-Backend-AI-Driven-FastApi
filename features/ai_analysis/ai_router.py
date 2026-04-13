@@ -15,6 +15,9 @@ from .ai_schema import (
     SessionPlanRequest,
     SessionPlanResponse,
     WeeklyScheduleResponse,
+    GenerateWeeklyScheduleRequest,
+    GenerateSplitRequest,
+    GeneratedSplitResponse,
 )
 from .ai_service import AIService
 
@@ -140,11 +143,30 @@ async def session_coach(
 @limiter.limit("3/hour")
 async def generate_weekly_schedule(
     request: Request,
+    data: GenerateWeeklyScheduleRequest,
     user=Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
     service = AIService(db)
-    return await service.generate_weekly_schedule(user.id)
+    return await service.generate_weekly_schedule(user.id, preferences=data.preferences)
+
+
+@router.post(
+    "/customize-split",
+    status_code=status.HTTP_200_OK,
+    response_model=GeneratedSplitResponse,
+)
+@limiter.limit("10/hour")
+async def customize_split(
+    request: Request,
+    data: GenerateSplitRequest,
+    user=Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    service = AIService(db)
+    return await service.generate_custom_split(
+        user.id, split_id=data.split_id, preferences=data.preferences
+    )
 
 
 @router.post(

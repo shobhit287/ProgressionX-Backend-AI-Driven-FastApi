@@ -14,6 +14,14 @@ class WorkoutSplitService:
     def __init__(self, db: AsyncSession):
         self.workout_split_repository = WorkoutSplitRepository(db)
 
+    def _get_exercise_type(self, value: str | None) -> ExerciseTypeEnum:
+        if not value:
+            return ExerciseTypeEnum.STANDARD
+        try:
+            return ExerciseTypeEnum(value.lower())
+        except ValueError:
+            return ExerciseTypeEnum.STANDARD
+
     async def create(self, user_id: UUID, payload: dict):
         payload["user_id"] = user_id
         split = await self.workout_split_repository.create(payload)
@@ -79,10 +87,44 @@ class WorkoutSplitService:
                         name=ex["name"],
                         display_order=ex["display_order"],
                         default_sets=ex.get("default_sets", 3),
-                        exercise_type=ExerciseTypeEnum(ex.get("exercise_type", "standard")),
+                        exercise_type=self._get_exercise_type(ex.get("exercise_type")),
                         rest_seconds=ex.get("rest_seconds", 90),
                         notes=ex.get("notes"),
                     ))
                 await db.flush()
 
         return await self.workout_split_repository.get_all_by_user(user_id)
+
+    async def replace_single_split(self, user_id: UUID, split_id: UUID, data: dict):
+        """Replace a single split's details and exercises."""
+        db = self.workout_split_repository.db
+        split = await self.workout_split_repository.get_by_id(split_id, user_id)
+        if not split:
+            from core.exception_handlers import BaseDomainError
+            raise BaseDomainError("Split not found", status_code=404)
+
+        split.name = data["name"]
+        split.description = data.get("description")
+        
+        # Delete old exercises
+        await db.execute(
+            sql_delete(SplitExercise).where(SplitExercise.split_id == split.id)
+        )
+        await db.flush()
+
+        # Add new exercises
+        if not data.get("isRest"):
+            exercises = data.get("exercises", [])
+            for i, ex in enumerate(exercises, 1):
+                db.add(SplitExercise(
+                    split_id=split.id,
+                    name=ex["name"],
+                    display_order=ex.get("displayOrder") or ex.get("display_order") or i,
+                    default_sets=ex.get("defaultSets") or ex.get("default_sets") or 3,
+                    exercise_type=self._get_exercise_type(ex.get("exerciseType") or ex.get("exercise_type")),
+                    rest_seconds=ex.get("restSeconds") or ex.get("rest_seconds") or 90,
+                    notes=ex.get("notes"),
+                ))
+            await db.flush()
+
+        return split

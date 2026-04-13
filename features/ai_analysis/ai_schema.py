@@ -122,3 +122,24 @@ class WeeklyScheduleResponse(BaseModel):
     days: List[GeneratedDay] = Field(...)
 
     model_config = {"populate_by_name": True}
+
+
+class GenerateWeeklyScheduleRequest(BaseModel):
+    preferences: Optional[str] = Field(None)
+
+
+class GenerateSplitRequest(BaseModel):
+    split_id: UUID = Field(..., alias="splitId")
+    preferences: Optional[str] = Field(None)
+
+    model_config = {"populate_by_name": True}
+
+
+class GeneratedSplitResponse(BaseModel):
+    day: str = Field(...)
+    name: str = Field(...)
+    description: Optional[str] = Field(None)
+    is_rest: bool = Field(False, alias="isRest")
+    exercises: List[GeneratedExercise] = Field(default_factory=list)
+
+    model_config = {"populate_by_name": True}

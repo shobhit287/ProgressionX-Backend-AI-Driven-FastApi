@@ -110,6 +110,24 @@ async def update_split(
     return split
 
 
+@router.post(
+    "/{split_id}/replace",
+    status_code=status.HTTP_200_OK,
+    response_model=ResponseWorkoutSplitSchema,
+)
+async def replace_single_split(
+    split_id: UUID,
+    data: dict,
+    user=Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    service = WorkoutSplitService(db)
+    split = await service.replace_single_split(user.id, split_id, data)
+    await db.commit()
+    await db.refresh(split)
+    return split
+
+
 @router.delete(
     "/{split_id}",
     status_code=status.HTTP_204_NO_CONTENT,
