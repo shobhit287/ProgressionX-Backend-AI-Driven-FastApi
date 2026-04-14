@@ -569,16 +569,22 @@ class ExportService:
 
         story = []
 
+        def _fmt_date(d):
+            return f"{d.day} {d.strftime('%B %Y')}"
+
+        def _fmt_datetime(dt):
+            return f"{dt.day} {dt.strftime('%B %Y, %H:%M UTC')}"
+
         story.append(Paragraph("ProgressionX Performance Report", h1))
         story.append(
             Paragraph(
                 f"{user.first_name} {user.last_name} &nbsp;·&nbsp; "
-                f"Generated {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}",
+                f"Generated {_fmt_datetime(datetime.utcnow())}",
                 muted,
             )
         )
 
-        scope_bits = [f"Range: <b>{start_date}</b> to <b>{end_date}</b>"]
+        scope_bits = [f"Range: <b>{_fmt_date(start_date)}</b> to <b>{_fmt_date(end_date)}</b>"]
         if split_name:
             scope_bits.append(f"Split: <b>{split_name}</b>")
         if exercise_name:
