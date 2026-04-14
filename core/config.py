@@ -5,7 +5,16 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     API_PREFIX: str = "/api/v1"
     GROQ_API_KEY: str = ""
-    PORTAL_URL: str 
+    PORTAL_URL: str
+
+    # SMTP / email
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM: str = ""
+    SMTP_FROM_NAME: str = "ProgressionX"
+    SMTP_USE_TLS: bool = True
 
     class Config:
         env_file = ".env"
