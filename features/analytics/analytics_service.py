@@ -228,13 +228,16 @@ class AnalyticsService:
         session_dates = [row.session_date for row in dates_result.all()]
 
         current_streak = 0
-        check_date = today
-        for d in session_dates:
-            if d == check_date:
-                current_streak += 1
-                check_date -= timedelta(days=1)
-            elif d < check_date:
-                break
+        if session_dates:
+            # A streak is still active if the most recent session was today or yesterday
+            if session_dates[0] >= today - timedelta(days=1):
+                check_date = session_dates[0]
+                for d in session_dates:
+                    if d == check_date:
+                        current_streak += 1
+                        check_date -= timedelta(days=1)
+                    else:
+                        break
 
         # Recent personal records: best estimated 1RM per exercise from last 30 days
         thirty_days_ago = today - timedelta(days=30)
