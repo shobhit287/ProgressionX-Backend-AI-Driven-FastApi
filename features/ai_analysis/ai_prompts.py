@@ -91,8 +91,25 @@ SESSION_PLAN_SYSTEM_INSTRUCTION = (
     "- Compounds: 2–3 ramp sets\n"
     "- Isolation: 0–1 warmup\n\n"
 
-    "OUTPUT FORMAT:\n"
-    '{"exercises": [...], "note": "one-line coaching cue"}\n'
+    "OUTPUT FORMAT (STRICT JSON):\n"
+    "{\n"
+    '  "exercises": [\n'
+    "    {\n"
+    '      "exerciseName": "Exercise Name",\n'
+    '      "sets": [\n'
+    '        {"setNumber": 1, "weightKg": 60.0, "reps": 10, "isWarmup": true},\n'
+    '        {"setNumber": 2, "weightKg": 100.0, "reps": 8, "isWarmup": false}\n'
+    "      ]\n"
+    "    }\n"
+    "  ],\n"
+    '  "note": "one-line coaching cue"\n'
+    "}\n\n"
+    "CRITICAL:\n"
+    "- Use 'exerciseName' (NOT 'name').\n"
+    "- Use 'weightKg' as a FLOAT (NOT a string like '60kg').\n"
+    "- Use 'setNumber' as an INTEGER.\n"
+    "- Use 'reps' as an INTEGER.\n"
+    "- Use 'isWarmup' as a BOOLEAN.\n"
     "ONLY JSON. No explanation."
 )
 

@@ -404,9 +404,10 @@ class AIService:
 
         return {"days": normalized}
 
-    @staticmethod
-    def _parse_session_plan(raw: str) -> dict:
+    def _parse_session_plan(self, raw: str) -> dict:
         import json
+        import re
+
         cleaned = raw.strip()
         if cleaned.startswith("```"):
             cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned[3:]
@@ -414,11 +415,57 @@ class AIService:
                 cleaned = cleaned[:-3].strip()
         try:
             parsed = json.loads(cleaned)
+            exercises_raw = parsed.get("exercises", [])
+            normalized_exercises = []
+
+            for ex in exercises_raw:
+                if not isinstance(ex, dict):
+                    continue
+
+                ex_name = ex.get("exerciseName") or ex.get("name") or "Unknown Exercise"
+                sets_raw = ex.get("sets", [])
+                normalized_sets = []
+
+                for i, s in enumerate(sets_raw, 1):
+                    if not isinstance(s, dict):
+                        continue
+
+                    # Handle weightKg (could be "60kg", "60", 60.0)
+                    weight_raw = s.get("weightKg") or s.get("weight") or 0.0
+                    if isinstance(weight_raw, str):
+                        # Extract first number found
+                        match = re.search(r"(\d+\.?\d*)", weight_raw)
+                        weight_kg = float(match.group(1)) if match else 0.0
+                    else:
+                        weight_kg = float(weight_raw)
+
+                    # Handle reps (could be "10", 10)
+                    reps_raw = s.get("reps") or 0
+                    if isinstance(reps_raw, str):
+                        match = re.search(r"(\d+)", reps_raw)
+                        reps = int(match.group(1)) if match else 0
+                    else:
+                        reps = int(reps_raw)
+
+                    normalized_sets.append({
+                        "setNumber": int(s.get("setNumber") or s.get("set_number") or i),
+                        "weightKg": weight_kg,
+                        "reps": reps,
+                        "isWarmup": bool(s.get("isWarmup") or s.get("is_warmup") or s.get("warmup") or False)
+                    })
+
+                normalized_exercises.append({
+                    "exerciseName": ex_name,
+                    "sets": normalized_sets
+                })
+
             return {
-                "exercises": parsed.get("exercises", []),
+                "exercises": normalized_exercises,
                 "note": parsed.get("note", ""),
             }
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, Exception) as e:
+            # Fallback for parsing errors or unexpected structures
+            print(f"Error parsing session plan: {e}")
             return {
                 "exercises": [],
                 "note": "Could not generate plan. Ask the AI coach for individual exercise advice.",
