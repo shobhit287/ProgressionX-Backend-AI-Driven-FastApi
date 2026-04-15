@@ -84,4 +84,29 @@ class SplitExerciseService:
     async def reorder(self, split_id: UUID, user_id: UUID, order_items: list[dict]):
         await self._verify_split_ownership(split_id, user_id)
         await self.exercise_repository.bulk_update_order(order_items)
+
+        # Propagate order to in-progress sessions for this split
+        active_sessions_result = await self.db.execute(
+            select(WorkoutSession.id).where(
+                WorkoutSession.user_id == user_id,
+                WorkoutSession.split_id == split_id,
+                WorkoutSession.status == SessionStatusEnum.IN_PROGRESS,
+            )
+        )
+        active_session_ids = [row[0] for row in active_sessions_result.all()]
+
+        if active_session_ids:
+            order_by_split_ex = {item["id"]: item["display_order"] for item in order_items}
+            existing = await self.db.execute(
+                select(SessionExercise).where(
+                    SessionExercise.session_id.in_(active_session_ids),
+                    SessionExercise.split_exercise_id.in_(order_by_split_ex.keys()),
+                )
+            )
+            for se in existing.scalars().all():
+                new_order = order_by_split_ex.get(se.split_exercise_id)
+                if new_order is not None and se.display_order != new_order:
+                    se.display_order = new_order
+            await self.db.flush()
+
         return await self.exercise_repository.get_all_by_split(split_id)
