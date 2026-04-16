@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field, EmailStr
 from typing import Optional
 from uuid import UUID
 from datetime import datetime
-from .users_enum import GoalEnum, GenderEnum, TrainingTypeEnum, ExperienceLevelEnum
+from .users_enum import GoalEnum, GenderEnum, TrainingTypeEnum, ExperienceLevelEnum, RoleEnum
 
 
 # Create User Schema
@@ -107,6 +107,8 @@ class ResponseUserSchema(BaseModel):
     training_type: TrainingTypeEnum = Field(..., alias="trainingType")
     experience_level: ExperienceLevelEnum = Field(..., alias="experienceLevel")
     activity_level: Optional[str] = Field(None, alias="activityLevel")
+
+    role: RoleEnum = Field(RoleEnum.USER)
 
     mobile_number: Optional[str] = Field(None, alias="mobileNumber")
     email: EmailStr = Field(...)

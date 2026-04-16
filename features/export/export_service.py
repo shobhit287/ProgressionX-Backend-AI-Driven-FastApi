@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.email import EmailAttachment, email_service
 from core.email.email_templates import export_report_email
-from core.groq_client import groq_client
+from core.groq_client import groq_client, set_llm_context
 from db.database import AsyncSessionLocal
 from features.exercise_set.exercise_set_model import ExerciseSet
 from features.split_exercise.split_exercise_model import SplitExercise
@@ -327,6 +327,7 @@ class ExportService:
         the PDF, and emails it to the user. Never raises — all outcomes are
         logged so a failed job cannot crash the worker loop."""
         try:
+            set_llm_context(user_id=str(user_id), endpoint="export-pdf")
             async with AsyncSessionLocal() as db:
                 service = cls(db)
                 user = await service._get_user(user_id)

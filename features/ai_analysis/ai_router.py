@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.depends import get_db, current_user
 from core.rate_limiter import limiter
+from core.groq_client import set_llm_context
 from .ai_schema import (
     AnalyzeSessionsRequest,
     AnalyzeExerciseRequest,
@@ -37,6 +38,7 @@ async def analyze_sessions(
     user=Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    set_llm_context(user_id=str(user.id), endpoint="analyze-sessions")
     service = AIService(db)
     result = await service.analyze_sessions(
         user.id,
@@ -60,6 +62,7 @@ async def analyze_exercise(
     user=Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    set_llm_context(user_id=str(user.id), endpoint="analyze-exercise")
     service = AIService(db)
     result = await service.analyze_exercise(
         user.id,
@@ -83,6 +86,7 @@ async def analyze_weight(
     user=Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    set_llm_context(user_id=str(user.id), endpoint="analyze-weight")
     service = AIService(db)
     result = await service.analyze_weight(
         user.id,
@@ -105,6 +109,7 @@ async def fitness_chat(
     user=Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    set_llm_context(user_id=str(user.id), endpoint="fitness-chat")
     service = AIService(db)
     result = await service.fitness_chat(
         user.id,
@@ -126,6 +131,7 @@ async def session_coach(
     user=Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    set_llm_context(user_id=str(user.id), endpoint="session-coach")
     service = AIService(db)
     result = await service.session_coach(
         user.id,
@@ -147,6 +153,7 @@ async def generate_weekly_schedule(
     user=Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    set_llm_context(user_id=str(user.id), endpoint="generate-weekly-schedule")
     service = AIService(db)
     return await service.generate_weekly_schedule(user.id, preferences=data.preferences)
 
@@ -163,6 +170,7 @@ async def customize_split(
     user=Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    set_llm_context(user_id=str(user.id), endpoint="customize-split")
     service = AIService(db)
     return await service.generate_custom_split(
         user.id, split_id=data.split_id, preferences=data.preferences
@@ -181,6 +189,7 @@ async def session_plan(
     user=Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    set_llm_context(user_id=str(user.id), endpoint="session-plan")
     service = AIService(db)
     result = await service.generate_session_plan(
         user.id,

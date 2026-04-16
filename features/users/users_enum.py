@@ -21,3 +21,8 @@ class ExperienceLevelEnum(str, Enum):
     BEGINNER = "beginner"
     INTERMEDIATE = "intermediate"
     ADVANCED = "advanced"
+
+
+class RoleEnum(str, Enum):
+    USER = "user"
+    SUPERADMIN = "superadmin"

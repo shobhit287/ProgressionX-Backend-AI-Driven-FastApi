@@ -6,6 +6,11 @@ class Settings(BaseSettings):
     API_PREFIX: str = "/api/v1"
     GROQ_API_KEY: str = ""
     PORTAL_URL: str
+    ENV: str = "development"
+
+    # Superadmin seed
+    SUPERADMIN_EMAIL: str = ""
+    SUPERADMIN_PASSWORD: str = ""
 
     # SMTP / email
     SMTP_HOST: str = ""

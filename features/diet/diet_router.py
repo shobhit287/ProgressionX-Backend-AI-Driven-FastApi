@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.depends import get_db, current_user
 from core.rate_limiter import limiter
+from core.groq_client import set_llm_context
 from .diet_schema import (
     SaveDietPlanSchema,
     ResponseDietPlanSchema,
@@ -73,6 +74,7 @@ async def diet_chat(
     user=Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    set_llm_context(user_id=str(user.id), endpoint="diet-chat")
     service = DietService(db)
     result = await service.chat(user.id, data.question, data.history)
     return result
@@ -90,6 +92,7 @@ async def generate_diet(
     user=Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    set_llm_context(user_id=str(user.id), endpoint="diet-generate")
     service = DietService(db)
     preferences = data.preferences if data else None
     result = await service.generate_diet(user.id, preferences)

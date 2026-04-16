@@ -1,5 +1,8 @@
 import json
 import logging
+import time
+import uuid
+from contextvars import ContextVar
 
 from groq import AsyncGroq
 
@@ -8,17 +11,63 @@ from core.exception_handlers import BaseDomainError
 
 logger = logging.getLogger(__name__)
 
+# Context vars set by endpoints before calling AI — allows logging without
+# changing every service method signature.
+_llm_user_id: ContextVar[str | None] = ContextVar("_llm_user_id", default=None)
+_llm_endpoint: ContextVar[str | None] = ContextVar("_llm_endpoint", default=None)
+
+
+def set_llm_context(*, user_id: str | None = None, endpoint: str | None = None):
+    """Call from a router/service before invoking the LLM."""
+    if user_id is not None:
+        _llm_user_id.set(user_id)
+    if endpoint is not None:
+        _llm_endpoint.set(endpoint)
+
 
 def _is_rate_limit_error(exc: Exception) -> bool:
     """Check if exception is a Groq rate limit error (works across SDK versions)."""
     cls_name = type(exc).__name__
     if cls_name == "RateLimitError":
         return True
-    # httpx-based errors: check status code
     status = getattr(exc, "status_code", None)
     if status == 429:
         return True
     return False
+
+
+async def _log_llm_call(
+    *,
+    model: str,
+    input_tokens: int | None,
+    output_tokens: int | None,
+    duration_ms: int,
+    status: str,
+):
+    """Persist an LLM call record. Uses its own short-lived session."""
+    try:
+        from db.database import AsyncSessionLocal
+        from features.ai_analysis.llm_call_log_model import LlmCallLog
+
+        user_id = _llm_user_id.get()
+        endpoint = _llm_endpoint.get() or "unknown"
+
+        async with AsyncSessionLocal() as session:
+            log = LlmCallLog(
+                id=uuid.uuid4(),
+                user_id=user_id,
+                endpoint=endpoint,
+                model=model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                duration_ms=duration_ms,
+                status=status,
+            )
+            session.add(log)
+            await session.commit()
+    except Exception as e:
+        # Never let logging failures break the actual AI response
+        logger.warning(f"Failed to log LLM call: {e}")
 
 
 class GroqClient:
@@ -36,6 +85,7 @@ class GroqClient:
         system_instruction: str,
         max_tokens: int = 1024,
     ) -> str:
+        start = time.monotonic()
         try:
             response = await self._client.chat.completions.create(
                 model=self.MODEL,
@@ -45,8 +95,26 @@ class GroqClient:
                 ],
                 max_tokens=max_tokens,
             )
+            duration_ms = int((time.monotonic() - start) * 1000)
+            usage = response.usage
+            await _log_llm_call(
+                model=self.MODEL,
+                input_tokens=usage.prompt_tokens if usage else None,
+                output_tokens=usage.completion_tokens if usage else None,
+                duration_ms=duration_ms,
+                status="success",
+            )
             return response.choices[0].message.content
         except Exception as e:
+            duration_ms = int((time.monotonic() - start) * 1000)
+            status = "rate_limited" if _is_rate_limit_error(e) else "error"
+            await _log_llm_call(
+                model=self.MODEL,
+                input_tokens=None,
+                output_tokens=None,
+                duration_ms=duration_ms,
+                status=status,
+            )
             if _is_rate_limit_error(e):
                 logger.warning(f"Groq rate limit hit: {e}")
                 raise BaseDomainError("AI is temporarily busy. Please try again in a minute.", 503)
@@ -84,14 +152,33 @@ class GroqClient:
         for msg in self._trim_history(history):
             messages.append({"role": msg["role"], "content": msg["content"]})
         messages.append({"role": "user", "content": prompt})
+        start = time.monotonic()
         try:
             response = await self._client.chat.completions.create(
                 model=self.MODEL,
                 messages=messages,
                 max_tokens=max_tokens,
             )
+            duration_ms = int((time.monotonic() - start) * 1000)
+            usage = response.usage
+            await _log_llm_call(
+                model=self.MODEL,
+                input_tokens=usage.prompt_tokens if usage else None,
+                output_tokens=usage.completion_tokens if usage else None,
+                duration_ms=duration_ms,
+                status="success",
+            )
             return response.choices[0].message.content
         except Exception as e:
+            duration_ms = int((time.monotonic() - start) * 1000)
+            status = "rate_limited" if _is_rate_limit_error(e) else "error"
+            await _log_llm_call(
+                model=self.MODEL,
+                input_tokens=None,
+                output_tokens=None,
+                duration_ms=duration_ms,
+                status=status,
+            )
             if _is_rate_limit_error(e):
                 logger.warning(f"Groq rate limit hit: {e}")
                 raise BaseDomainError("AI is temporarily busy. Please try again in a minute.", 503)
@@ -105,6 +192,7 @@ class GroqClient:
         system_instruction: str,
         max_tokens: int = 1024,
     ) -> dict:
+        start = time.monotonic()
         try:
             response = await self._client.chat.completions.create(
                 model=self.MODEL,
@@ -116,7 +204,25 @@ class GroqClient:
                 response_format={"type": "json_object"},
             )
             raw = response.choices[0].message.content
+            duration_ms = int((time.monotonic() - start) * 1000)
+            usage = response.usage
+            await _log_llm_call(
+                model=self.MODEL,
+                input_tokens=usage.prompt_tokens if usage else None,
+                output_tokens=usage.completion_tokens if usage else None,
+                duration_ms=duration_ms,
+                status="success",
+            )
         except Exception as e:
+            duration_ms = int((time.monotonic() - start) * 1000)
+            status = "rate_limited" if _is_rate_limit_error(e) else "error"
+            await _log_llm_call(
+                model=self.MODEL,
+                input_tokens=None,
+                output_tokens=None,
+                duration_ms=duration_ms,
+                status=status,
+            )
             if _is_rate_limit_error(e):
                 logger.warning(f"Groq rate limit hit: {e}")
                 raise BaseDomainError("AI is temporarily busy. Please try again in a minute.", 503)

@@ -13,7 +13,7 @@ from sqlalchemy import (
 )
 
 from db.base import Base
-from .users_enum import GoalEnum, GenderEnum, TrainingTypeEnum, ExperienceLevelEnum
+from .users_enum import GoalEnum, GenderEnum, TrainingTypeEnum, ExperienceLevelEnum, RoleEnum
 
 
 class User(Base):
@@ -49,6 +49,13 @@ class User(Base):
     mobile_number = Column(String(20), nullable=True, index=True)
     email = Column(String(255), nullable=False, unique=True, index=True)
     hashed_password = Column(String(255), nullable=False)
+
+    role = Column(
+        Enum(RoleEnum, values_callable=lambda x: [e.value for e in x], name="role_enum"),
+        nullable=False,
+        default=RoleEnum.USER,
+        server_default="user",
+    )
 
     is_active = Column(Boolean, default=True, nullable=False)
 
