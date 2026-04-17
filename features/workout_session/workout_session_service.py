@@ -167,6 +167,24 @@ class WorkoutSessionService:
             await self.db.delete(ex)
             changed = True
 
+        # Sync attribute changes (name, type, order, superset_group) for existing exercises
+        split_exercise_map = {ex.id: ex for ex in current_split_exercises}
+        for se in session.exercises:
+            if se.split_exercise_id and se.split_exercise_id in split_exercise_map:
+                source = split_exercise_map[se.split_exercise_id]
+                if se.exercise_name != source.name:
+                    se.exercise_name = source.name
+                    changed = True
+                if se.display_order != source.display_order:
+                    se.display_order = source.display_order
+                    changed = True
+                if se.exercise_type != source.exercise_type:
+                    se.exercise_type = source.exercise_type
+                    changed = True
+                if se.superset_group != source.superset_group:
+                    se.superset_group = source.superset_group
+                    changed = True
+
         # Add new exercises from split
         new_exercises = [
             ex for ex in current_split_exercises

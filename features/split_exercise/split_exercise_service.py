@@ -39,6 +39,35 @@ class SplitExerciseService:
         await self._verify_split_ownership(split_id, user_id)
         exercise = await self.exercise_repository.get_by_id(exercise_id)
         updated_exercise = await self.exercise_repository.update(exercise, payload)
+
+        # Propagate changes to active sessions
+        active_sessions_result = await self.db.execute(
+            select(WorkoutSession.id).where(
+                WorkoutSession.user_id == user_id,
+                WorkoutSession.split_id == split_id,
+                WorkoutSession.status == SessionStatusEnum.IN_PROGRESS,
+            )
+        )
+        active_session_ids = [row[0] for row in active_sessions_result.all()]
+
+        if active_session_ids:
+            result = await self.db.execute(
+                select(SessionExercise).where(
+                    SessionExercise.session_id.in_(active_session_ids),
+                    SessionExercise.split_exercise_id == exercise_id,
+                )
+            )
+            for se in result.scalars().all():
+                if "name" in payload:
+                    se.exercise_name = payload["name"]
+                if "exercise_type" in payload:
+                    se.exercise_type = payload["exercise_type"]
+                if "superset_group" in payload:
+                    se.superset_group = payload["superset_group"]
+                if "display_order" in payload:
+                    se.display_order = payload["display_order"]
+            await self.db.flush()
+
         return updated_exercise
 
     async def delete(self, split_id: UUID, exercise_id: UUID, user_id: UUID):
