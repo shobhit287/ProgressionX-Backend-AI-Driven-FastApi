@@ -49,13 +49,25 @@ async def _log_llm_call(
         from db.database import AsyncSessionLocal
         from features.ai_analysis.llm_call_log_model import LlmCallLog
 
-        user_id = _llm_user_id.get()
+        raw_user_id = _llm_user_id.get()
         endpoint = _llm_endpoint.get() or "unknown"
+
+        # asyncpg requires a UUID instance for UUID columns — coerce strings safely
+        user_id_value: uuid.UUID | None = None
+        if raw_user_id is not None:
+            try:
+                user_id_value = (
+                    raw_user_id
+                    if isinstance(raw_user_id, uuid.UUID)
+                    else uuid.UUID(str(raw_user_id))
+                )
+            except (ValueError, TypeError):
+                user_id_value = None
 
         async with AsyncSessionLocal() as session:
             log = LlmCallLog(
                 id=uuid.uuid4(),
-                user_id=user_id,
+                user_id=user_id_value,
                 endpoint=endpoint,
                 model=model,
                 input_tokens=input_tokens,
@@ -65,9 +77,11 @@ async def _log_llm_call(
             )
             session.add(log)
             await session.commit()
-    except Exception as e:
-        # Never let logging failures break the actual AI response
-        logger.warning(f"Failed to log LLM call: {e}")
+    except Exception:
+        # Never let logging failures break the actual AI response, but make the
+        # failure visible — silent warnings get lost and the dashboard ends up
+        # showing 0 calls forever.
+        logger.exception("Failed to log LLM call")
 
 
 class GroqClient:
