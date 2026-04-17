@@ -8,6 +8,7 @@ from groq import AsyncGroq
 
 from core.config import settings
 from core.exception_handlers import BaseDomainError
+from db.uuid import new_uuid
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +67,7 @@ async def _log_llm_call(
 
         async with AsyncSessionLocal() as session:
             log = LlmCallLog(
-                id=uuid.uuid4(),
+                id=new_uuid(),
                 user_id=user_id_value,
                 endpoint=endpoint,
                 model=model,

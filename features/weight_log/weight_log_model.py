@@ -1,5 +1,5 @@
-import uuid
 from db.base import Base
+from db.uuid import new_uuid
 from sqlalchemy import (
     Column,
     Float,
@@ -21,7 +21,7 @@ class WeightLog(Base):
         Index("ix_weight_logs_user_logged_at", "user_id", "logged_at"),
     )
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     user_id = Column(
         UUID(as_uuid=True),
         ForeignKey("users.id"),

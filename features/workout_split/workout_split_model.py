@@ -1,5 +1,5 @@
-import uuid
 from db.base import Base
+from db.uuid import new_uuid
 from sqlalchemy import Column, String, ForeignKey, Enum, UUID, UniqueConstraint
 from sqlalchemy.orm import relationship
 
@@ -12,7 +12,7 @@ class WorkoutSplit(Base):
         UniqueConstraint("user_id", "day", name="uq_user_day"),
     )
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     name = Column(String, nullable=False)
     day = Column(Enum(DayEnum, name="days_enum"), nullable=False)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)

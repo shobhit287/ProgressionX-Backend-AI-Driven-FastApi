@@ -10,13 +10,13 @@ Usage:
 """
 
 import asyncio
-import uuid
 
 from sqlalchemy import select
 
 from core.config import settings
 from core.security import hash_password
 from db.database import AsyncSessionLocal
+from db.uuid import new_uuid
 from features.users.users_model import User
 from features.users.users_enum import (
     RoleEnum,
@@ -56,7 +56,7 @@ async def create_superadmin():
 
         # Create new superadmin with default profile fields
         user = User(
-            id=uuid.uuid4(),
+            id=new_uuid(),
             first_name="Super",
             last_name="Admin",
             age=30,

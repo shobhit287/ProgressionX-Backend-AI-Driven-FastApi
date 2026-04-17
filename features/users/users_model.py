@@ -1,4 +1,3 @@
-import uuid
 from sqlalchemy import (
     Column,
     Enum,
@@ -13,13 +12,14 @@ from sqlalchemy import (
 )
 
 from db.base import Base
+from db.uuid import new_uuid
 from .users_enum import GoalEnum, GenderEnum, TrainingTypeEnum, ExperienceLevelEnum, RoleEnum
 
 
 class User(Base):
     __tablename__ = "users"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
 
     first_name = Column(String(100), nullable=False)
     last_name = Column(String(100), nullable=False)

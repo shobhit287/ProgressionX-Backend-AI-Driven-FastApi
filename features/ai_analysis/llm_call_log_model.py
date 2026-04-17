@@ -1,4 +1,3 @@
-import uuid
 from sqlalchemy import (
     Column,
     UUID,
@@ -10,6 +9,7 @@ from sqlalchemy import (
     Index,
 )
 from db.base import Base
+from db.uuid import new_uuid
 
 
 class LlmCallLog(Base):
@@ -20,7 +20,7 @@ class LlmCallLog(Base):
         Index("ix_llm_call_logs_user_id", "user_id"),
     )
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     user_id = Column(
         UUID(as_uuid=True),
         ForeignKey("users.id"),

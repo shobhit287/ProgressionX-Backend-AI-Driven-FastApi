@@ -1,5 +1,5 @@
-import uuid
 from db.base import Base
+from db.uuid import new_uuid
 from sqlalchemy import Column, String, Integer, Text, ForeignKey, Enum, UUID, Index
 from sqlalchemy.orm import relationship
 
@@ -13,7 +13,7 @@ class SplitExercise(Base):
         Index("ix_split_exercises_split_id_display_order", "split_id", "display_order"),
     )
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     split_id = Column(
         UUID(as_uuid=True),
         ForeignKey("workout_splits.id", ondelete="CASCADE"),

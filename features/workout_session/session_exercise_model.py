@@ -1,5 +1,5 @@
-import uuid
 from db.base import Base
+from db.uuid import new_uuid
 from sqlalchemy import (
     Column,
     String,
@@ -21,7 +21,7 @@ class SessionExercise(Base):
         Index("ix_session_exercises_session_display", "session_id", "display_order"),
     )
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     session_id = Column(
         UUID(as_uuid=True),
         ForeignKey("workout_sessions.id", ondelete="CASCADE"),

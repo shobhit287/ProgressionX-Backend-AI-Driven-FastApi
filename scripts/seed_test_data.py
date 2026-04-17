@@ -11,7 +11,6 @@ Skip: existing users detected by email are skipped automatically.
 """
 
 import asyncio
-import uuid
 import random
 import sys
 import os
@@ -23,6 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from sqlalchemy import select
 from db.database import AsyncSessionLocal, engine
 from db.base import Base
+from db.uuid import new_uuid
 import db.init_models  # noqa – register models
 
 from features.users.users_model import User
@@ -411,7 +411,7 @@ def _weight_logs_alex(user_id: uuid.UUID) -> list[WeightLog]:
         waist = 82.0 + (w - 75.0) * 0.4 + random.uniform(-0.5, 0.5)
         bf = 14.0 + (w - 75.0) * 0.25 + random.uniform(-0.3, 0.3)
         logs.append(WeightLog(
-            id=uuid.uuid4(), user_id=user_id,
+            id=new_uuid(), user_id=user_id,
             weight_kg=round(w + noise, 1),
             waist_cm=round(waist, 1),
             body_fat_pct=round(bf, 1),
@@ -432,7 +432,7 @@ def _weight_logs_priya(user_id: uuid.UUID) -> list[WeightLog]:
         waist = 72.0 - (62.0 - w) * 0.6 + random.uniform(-0.5, 0.5)
         bf = 26.0 - (62.0 - w) * 0.9 + random.uniform(-0.3, 0.3)
         logs.append(WeightLog(
-            id=uuid.uuid4(), user_id=user_id,
+            id=new_uuid(), user_id=user_id,
             weight_kg=round(w + noise, 1),
             waist_cm=round(waist, 1),
             body_fat_pct=round(bf, 1),
@@ -453,7 +453,7 @@ def _weight_logs_marcus(user_id: uuid.UUID) -> list[WeightLog]:
         waist = 88.0 + (w - 90.0) * 0.35 + random.uniform(-0.5, 0.5)
         bf = 17.0 + (w - 90.0) * 0.15 + random.uniform(-0.3, 0.3)
         logs.append(WeightLog(
-            id=uuid.uuid4(), user_id=user_id,
+            id=new_uuid(), user_id=user_id,
             weight_kg=round(w + noise, 1),
             waist_cm=round(waist, 1),
             body_fat_pct=round(bf, 1),
@@ -488,7 +488,7 @@ async def seed():
 
             # ── create user ──
             user = User(
-                id=uuid.uuid4(),
+                id=new_uuid(),
                 first_name=profile["first_name"],
                 last_name=profile["last_name"],
                 email=profile["email"],
@@ -514,7 +514,7 @@ async def seed():
 
             for day_enum, split_def in split_template.items():
                 split = WorkoutSplit(
-                    id=uuid.uuid4(),
+                    id=new_uuid(),
                     user_id=user.id,
                     name=split_def["name"],
                     day=day_enum,
@@ -529,7 +529,7 @@ async def seed():
                     split_def["exercises"], start=1
                 ):
                     se = SplitExercise(
-                        id=uuid.uuid4(),
+                        id=new_uuid(),
                         split_id=split.id,
                         name=ex_name,
                         display_order=order,
@@ -604,7 +604,7 @@ async def seed():
                     notes = random.choice(note_options)
 
                 ws = WorkoutSession(
-                    id=uuid.uuid4(),
+                    id=new_uuid(),
                     user_id=user.id,
                     split_id=split.id,
                     started_at=started_at,
@@ -623,7 +623,7 @@ async def seed():
 
                 for ex_order, split_ex in enumerate(split_exs[:ex_limit], start=1):
                     se = SessionExercise(
-                        id=uuid.uuid4(),
+                        id=new_uuid(),
                         session_id=ws.id,
                         split_exercise_id=split_ex.id,
                         exercise_name=split_ex.name,
@@ -663,7 +663,7 @@ async def seed():
                                 rir = random.choice([1, 2, 2, 3, 3])
 
                         es = ExerciseSet(
-                            id=uuid.uuid4(),
+                            id=new_uuid(),
                             session_exercise_id=se.id,
                             set_number=s_num,
                             weight_kg=w,
