@@ -230,6 +230,33 @@ def build_split_customization_prompt(
     return prompt
 
 
+SPLIT_ANALYSIS_SYSTEM_INSTRUCTION = (
+    "You are an expert strength & hypertrophy coach reviewing a user's weekly workout split design.\n\n"
+
+    "ANALYSIS CHECKLIST:\n"
+    "1. Weekly working sets per major muscle (chest, back, quads, hams, glutes, shoulders, biceps, triceps, calves, core) — flag under/over-worked groups.\n"
+    "2. Frequency per muscle group (1x, 2x, 3x per week). Hypertrophy favors 2x+.\n"
+    "3. Recovery: back-to-back sessions on same muscle? Rest-day placement? Weekly training days vs experience level?\n"
+    "4. Exercise selection: compound vs isolation balance, missing key movements (e.g. no direct calves, no horizontal pull).\n"
+    "5. Fit with user's goal (bulking/cutting/maintenance), training type, and experience level.\n\n"
+
+    "WEEKLY VOLUME REFERENCE (working sets per muscle, hypertrophy):\n"
+    "- Beginner: 8-12   |   Intermediate: 10-20   |   Advanced: 12-25\n"
+    "- Going well above range for experience = junk-volume / recovery risk.\n\n"
+
+    "RULES:\n"
+    "- Directly answer the user's specific question FIRST.\n"
+    "- Be quantitative: cite actual weekly set counts per muscle (e.g. 'calves: 4 sets/week — below 8-12 range').\n"
+    "- Assume standard indirect involvement (e.g. rows hit biceps, bench hits triceps) when estimating volume.\n"
+    "- Distinguish real issues from preference. Don't invent problems.\n"
+    "- If the split is fine, say so clearly instead of padding critique.\n\n"
+
+    "You MUST respond with valid JSON in this exact format:\n"
+    '{"analysis": "detailed, structured explanation", '
+    '"suggestions": ["clear action 1", "clear action 2"]}'
+)
+
+
 SESSION_COACH_SYSTEM_INSTRUCTION = (
     "You are a real-time gym coach embedded in a workout tracking app. "
     "The user is mid-session and asking you a quick question about their current workout. "
@@ -517,6 +544,66 @@ def build_session_coach_prompt(
         f"{split_ctx}{current_ctx}\n{history_ctx}\n"
         f"User's question: {question}"
     )
+
+
+def build_split_analysis_prompt(
+    user,
+    splits_with_exercises: list[dict],
+    current_weight_kg: float | None,
+    question: str,
+) -> str:
+    weight_source = "latest weight log" if current_weight_kg is not None else "profile"
+    weight_value = current_weight_kg if current_weight_kg is not None else user.weight
+
+    context = (
+        f"User profile: {_user_profile_line(user)}\n"
+        f"Current body weight ({weight_source}): {weight_value}kg\n\n"
+        f"=== WEEKLY SPLIT ===\n"
+    )
+
+    days_order = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+    day_index = {d: i for i, d in enumerate(days_order)}
+    sorted_splits = sorted(
+        splits_with_exercises,
+        key=lambda s: day_index.get(str(s.get("day", "")).lower(), 99),
+    )
+
+    if not sorted_splits:
+        context += "(no splits configured)\n"
+    else:
+        for split in sorted_splits:
+            day = str(split.get("day", "")).capitalize()
+            name = split.get("name") or ""
+            context += f"\n{day} — {name}"
+            if split.get("description"):
+                context += f" ({split['description']})"
+            context += "\n"
+
+            exercises = split.get("exercises") or []
+            if not exercises:
+                context += "  (rest day / no exercises)\n"
+                continue
+            for i, ex in enumerate(exercises, 1):
+                line = (
+                    f"  {i}. {ex['name']} — {ex['default_sets']} sets, "
+                    f"{ex['rest_seconds']}s rest"
+                )
+                ex_type = ex.get("exercise_type")
+                if ex_type and ex_type != "standard":
+                    line += f" [{ex_type}]"
+                if ex.get("notes"):
+                    line += f" (notes: {ex['notes']})"
+                context += line + "\n"
+
+    prompt = (
+        f"{context}\n"
+        f"User's question about their split:\n\"{question}\"\n\n"
+        f"Directly answer the question first. Then, where relevant, estimate weekly working sets "
+        f"per muscle group (treat direct sets as 1.0 and indirect involvement as ~0.5), flag any "
+        f"under- or over-worked muscles, comment on frequency and recovery, and judge fit with the "
+        f"user's goal, training type, and experience level. Be specific and quantitative."
+    )
+    return prompt
 
 
 def build_session_plan_prompt(

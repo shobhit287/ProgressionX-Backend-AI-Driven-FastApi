@@ -10,7 +10,7 @@ Run:  python -m scripts.seed_test_data
 Skip: existing users detected by email are skipped automatically.
 """
 
-import asyncio
+import asyncio, uuid
 import random
 import sys
 import os

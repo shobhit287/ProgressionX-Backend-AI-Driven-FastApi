@@ -8,6 +8,7 @@ from .ai_schema import (
     AnalyzeSessionsRequest,
     AnalyzeExerciseRequest,
     AnalyzeWeightRequest,
+    AnalyzeSplitRequest,
     AIAnalysisResponse,
     SessionCoachRequest,
     SessionCoachResponse,
@@ -92,6 +93,27 @@ async def analyze_weight(
         user.id,
         from_date=data.from_date,
         to_date=data.to_date,
+        question=data.question,
+    )
+    return result
+
+
+@router.post(
+    "/analyze-split",
+    status_code=status.HTTP_200_OK,
+    response_model=AIAnalysisResponse,
+)
+@limiter.limit("3/minute")
+async def analyze_split(
+    request: Request,
+    data: AnalyzeSplitRequest,
+    user=Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    set_llm_context(user_id=str(user.id), endpoint="analyze-split")
+    service = AIService(db)
+    result = await service.analyze_split(
+        user.id,
         question=data.question,
     )
     return result

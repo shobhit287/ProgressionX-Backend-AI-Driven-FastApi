@@ -22,6 +22,7 @@ from .ai_prompts import (
     FITNESS_CHAT_SYSTEM_INSTRUCTION,
     WEEKLY_SCHEDULE_SYSTEM_INSTRUCTION,
     SPLIT_CUSTOMIZATION_SYSTEM_INSTRUCTION,
+    SPLIT_ANALYSIS_SYSTEM_INSTRUCTION,
     build_session_analysis_prompt,
     build_exercise_analysis_prompt,
     build_weight_analysis_prompt,
@@ -30,7 +31,9 @@ from .ai_prompts import (
     build_session_plan_prompt,
     build_weekly_schedule_prompt,
     build_split_customization_prompt,
+    build_split_analysis_prompt,
 )
+from features.weight_log.weight_log_model import WeightLog
 
 
 class AIService:
@@ -102,6 +105,56 @@ class AIService:
         prompt = build_weight_analysis_prompt(user, analytics, question)
         return await groq_client.generate_json(
             prompt, system_instruction=ANALYSIS_SYSTEM_INSTRUCTION
+        )
+
+    # ── split analysis ────────────────────────────────────────────────
+
+    async def analyze_split(
+        self,
+        user_id: UUID,
+        question: str,
+    ) -> dict:
+        user = await self._get_user(user_id)
+
+        from features.split_exercise.split_exercise_service import SplitExerciseService
+        ex_service = SplitExerciseService(self.db)
+
+        all_splits = await self.splits.get_all(user_id)
+        splits_data = []
+        for s in all_splits:
+            exercises = await ex_service.get_all_by_split(s.id, user_id)
+            splits_data.append({
+                "day": s.day.value if hasattr(s.day, "value") else str(s.day),
+                "name": s.name,
+                "description": s.description,
+                "exercises": [
+                    {
+                        "name": ex.name,
+                        "default_sets": ex.default_sets,
+                        "exercise_type": (
+                            ex.exercise_type.value
+                            if hasattr(ex.exercise_type, "value")
+                            else str(ex.exercise_type)
+                        ),
+                        "rest_seconds": ex.rest_seconds,
+                        "notes": ex.notes,
+                    }
+                    for ex in exercises
+                ],
+            })
+
+        latest_result = await self.db.execute(
+            select(WeightLog)
+            .where(WeightLog.user_id == user_id)
+            .order_by(WeightLog.logged_at.desc())
+            .limit(1)
+        )
+        latest_log = latest_result.scalar_one_or_none()
+        current_weight = latest_log.weight_kg if latest_log else None
+
+        prompt = build_split_analysis_prompt(user, splits_data, current_weight, question)
+        return await groq_client.generate_json(
+            prompt, system_instruction=SPLIT_ANALYSIS_SYSTEM_INSTRUCTION
         )
 
     # ── fitness chat ──────────────────────────────────────────────────
