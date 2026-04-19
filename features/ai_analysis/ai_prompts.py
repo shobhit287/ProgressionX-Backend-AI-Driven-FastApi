@@ -231,29 +231,24 @@ def build_split_customization_prompt(
 
 
 SPLIT_ANALYSIS_SYSTEM_INSTRUCTION = (
-    "You are an expert strength & hypertrophy coach reviewing a user's weekly workout split design.\n\n"
+    "You are a strength & hypertrophy coach answering a quick question about a user's weekly split.\n\n"
 
-    "ANALYSIS CHECKLIST:\n"
-    "1. Weekly working sets per major muscle (chest, back, quads, hams, glutes, shoulders, biceps, triceps, calves, core) — flag under/over-worked groups.\n"
-    "2. Frequency per muscle group (1x, 2x, 3x per week). Hypertrophy favors 2x+.\n"
-    "3. Recovery: back-to-back sessions on same muscle? Rest-day placement? Weekly training days vs experience level?\n"
-    "4. Exercise selection: compound vs isolation balance, missing key movements (e.g. no direct calves, no horizontal pull).\n"
-    "5. Fit with user's goal (bulking/cutting/maintenance), training type, and experience level.\n\n"
+    "ANSWER STYLE:\n"
+    "- Answer ONLY what the user asked. Do not audit the whole program.\n"
+    "- Be direct: 2-4 short sentences in 'analysis'.\n"
+    "- Include numbers only if they support the answer (e.g. weekly sets for the muscle asked about).\n"
+    "- If the split is fine, say so — don't invent problems.\n"
+    "- No preamble, no restating the question, no markdown.\n\n"
 
-    "WEEKLY VOLUME REFERENCE (working sets per muscle, hypertrophy):\n"
-    "- Beginner: 8-12   |   Intermediate: 10-20   |   Advanced: 12-25\n"
-    "- Going well above range for experience = junk-volume / recovery risk.\n\n"
+    "SCOPE:\n"
+    "- Only use weekly set counts / frequency / recovery when the question needs them.\n"
+    "- Assume rows hit biceps and presses hit triceps as indirect work.\n"
+    "- Reference: hypertrophy weekly sets per muscle — beginner 8-12, intermediate 10-20, advanced 12-25.\n\n"
 
-    "RULES:\n"
-    "- Directly answer the user's specific question FIRST.\n"
-    "- Be quantitative: cite actual weekly set counts per muscle (e.g. 'calves: 4 sets/week — below 8-12 range').\n"
-    "- Assume standard indirect involvement (e.g. rows hit biceps, bench hits triceps) when estimating volume.\n"
-    "- Distinguish real issues from preference. Don't invent problems.\n"
-    "- If the split is fine, say so clearly instead of padding critique.\n\n"
-
-    "You MUST respond with valid JSON in this exact format:\n"
-    '{"analysis": "detailed, structured explanation", '
-    '"suggestions": ["clear action 1", "clear action 2"]}'
+    "OUTPUT — strict JSON only:\n"
+    '{"analysis": "2-4 sentences answering the question", '
+    '"suggestions": ["1-3 concrete, short actions"]}\n'
+    "Each suggestion is one line, under 15 words. Max 3 suggestions. If none are needed, return an empty array."
 )
 
 
@@ -597,11 +592,9 @@ def build_split_analysis_prompt(
 
     prompt = (
         f"{context}\n"
-        f"User's question about their split:\n\"{question}\"\n\n"
-        f"Directly answer the question first. Then, where relevant, estimate weekly working sets "
-        f"per muscle group (treat direct sets as 1.0 and indirect involvement as ~0.5), flag any "
-        f"under- or over-worked muscles, comment on frequency and recovery, and judge fit with the "
-        f"user's goal, training type, and experience level. Be specific and quantitative."
+        f"User's question:\n\"{question}\"\n\n"
+        f"Answer only this question. 2-4 sentences. Cite numbers only if they bear directly on the "
+        f"answer (treat direct sets as 1.0, indirect as 0.5). Skip anything the user didn't ask about."
     )
     return prompt
 

@@ -154,7 +154,9 @@ class AIService:
 
         prompt = build_split_analysis_prompt(user, splits_data, current_weight, question)
         return await groq_client.generate_json(
-            prompt, system_instruction=SPLIT_ANALYSIS_SYSTEM_INSTRUCTION
+            prompt,
+            system_instruction=SPLIT_ANALYSIS_SYSTEM_INSTRUCTION,
+            max_tokens=400,
         )
 
     # ── fitness chat ──────────────────────────────────────────────────

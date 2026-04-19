@@ -2,7 +2,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc
 from sqlalchemy.orm import selectinload
 from uuid import UUID
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from core.exception_handlers import BaseDomainError
 from .workout_session_model import WorkoutSession
@@ -107,6 +107,32 @@ class WorkoutSessionRepository:
         sessions = result.scalars().all()
 
         return sessions, total
+
+    async def get_session_dates_by_split(
+        self,
+        user_id: UUID,
+        split_id: UUID,
+        limit: int = 500,
+    ) -> list[tuple[UUID, datetime, SessionStatusEnum]]:
+        """Lightweight listing for the split-date dropdown.
+
+        Returns only (id, started_at, status) tuples, newest first.
+        Uses the composite (user_id, split_id) index. No count query.
+        """
+        result = await self.db.execute(
+            select(
+                WorkoutSession.id,
+                WorkoutSession.started_at,
+                WorkoutSession.status,
+            )
+            .where(
+                WorkoutSession.user_id == user_id,
+                WorkoutSession.split_id == split_id,
+            )
+            .order_by(desc(WorkoutSession.started_at))
+            .limit(limit)
+        )
+        return result.all()
 
     async def update(self, session: WorkoutSession, data: dict) -> WorkoutSession:
         for field, value in data.items():

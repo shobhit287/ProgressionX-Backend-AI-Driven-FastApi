@@ -99,6 +99,13 @@ class WorkoutSessionService:
         sessions, total = await self.repository.get_all(user_id, filters)
         return sessions, total
 
+    async def get_dates_by_split(self, user_id: UUID, split_id: UUID, limit: int = 500):
+        rows = await self.repository.get_session_dates_by_split(user_id, split_id, limit)
+        return [
+            {"id": row[0], "started_at": row[1], "status": row[2]}
+            for row in rows
+        ]
+
     async def complete_session(self, session_id: UUID, user_id: UUID, notes: str | None = None):
         session = await self.repository.get_by_id(session_id, user_id)
 

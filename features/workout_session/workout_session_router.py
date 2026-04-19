@@ -11,6 +11,7 @@ from .workout_session_schema import (
     ResponseSessionDetailSchema,
     ResponseSessionSchema,
     PaginatedSessionsSchema,
+    SessionDateItemSchema,
 )
 from .workout_session_enum import SessionStatusEnum
 from .workout_session_service import WorkoutSessionService
@@ -66,6 +67,21 @@ async def list_sessions(
         page=page,
         page_size=page_size,
     )
+
+
+@router.get(
+    "/dates",
+    status_code=status.HTTP_200_OK,
+    response_model=list[SessionDateItemSchema],
+)
+async def list_session_dates_by_split(
+    split_id: UUID = Query(..., alias="splitId"),
+    limit: int = Query(500, ge=1, le=1000),
+    user=Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    service = WorkoutSessionService(db)
+    return await service.get_dates_by_split(user.id, split_id, limit)
 
 
 @router.get(

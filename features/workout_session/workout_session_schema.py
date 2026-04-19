@@ -89,6 +89,17 @@ class ResponseSessionDetailSchema(ResponseSessionSchema):
     exercises: list[ResponseSessionExerciseSchema] = Field(default_factory=list)
 
 
+class SessionDateItemSchema(BaseModel):
+    id: UUID = Field(...)
+    started_at: datetime = Field(..., alias="startedAt")
+    status: SessionStatusEnum = Field(...)
+
+    model_config = {
+        "from_attributes": True,
+        "populate_by_name": True,
+    }
+
+
 class PaginatedSessionsSchema(BaseModel):
     items: list[ResponseSessionSchema] = Field(...)
     total: int = Field(...)
