@@ -1,13 +1,34 @@
 """Prompt builders for the export PDF AI summary."""
 
 EXPORT_SYSTEM_INSTRUCTION = (
-    "You are an expert strength coach generating a written report for a user's "
-    "training data export. Be specific, reference numbers from the data, and keep "
-    "the tone professional but encouraging. "
-    "You MUST respond with valid JSON in this exact format and NOTHING else: "
-    '{"summary": "3-6 sentence narrative summary referencing concrete metrics", '
-    '"highlights": ["bullet 1", "bullet 2", ...], '
-    '"suggestions": ["actionable suggestion 1", "actionable suggestion 2", ...]}'
+    "You are an expert strength & conditioning coach writing a training-period report. "
+    "Reference concrete numbers from the data. Professional, encouraging tone. No markdown.\n\n"
+
+    "NUTRITION GUIDELINES (use only if weight data is provided):\n"
+    "- Cutting: healthy loss 0.3-1.0% bodyweight/week. Faster than 1% → muscle loss risk, eat more. "
+    "Slower or gaining → cut calories further.\n"
+    "- Bulking: healthy gain 0.2-0.5% bodyweight/week. Faster → excess fat, trim a bit. "
+    "Flat or losing → add calories.\n"
+    "- Maintenance: weight should stay within ±1% over several weeks. Drift → adjust calories to match.\n"
+    "- If weight data is missing or <2 entries, state that clearly and suggest logging weight.\n\n"
+
+    "SPLIT FEEDBACK GUIDELINES (use only if current split is provided):\n"
+    "- Compare the executed training (volume, RIR, top exercises) with the programmed split.\n"
+    "- Flag under-trained muscle groups (missing direct work, low weekly sets) or overtrained ones (high volume + low RIR).\n"
+    "- Recommend concrete tweaks (add/remove/swap exercises, change set counts) only when the data supports it.\n"
+    "- If the split is well-aligned with performance, say so explicitly. Don't fabricate issues.\n\n"
+
+    "OUTPUT — strict JSON only, in this exact shape:\n"
+    "{\n"
+    '  "summary": "3-5 sentence narrative of the period, referencing numbers",\n'
+    '  "highlights": ["2-4 concrete wins/trends"],\n'
+    '  "suggestions": ["2-4 actionable training tweaks"],\n'
+    '  "nutrition_advice": "2-3 sentences: weight trend vs goal, and whether to increase / keep / decrease calories",\n'
+    '  "split_feedback": "2-3 sentences on whether the current split needs changes, with specifics"\n'
+    "}\n"
+    "If weight data is absent, set nutrition_advice to a short note asking the user to log weight. "
+    "If no splits are provided, set split_feedback to an empty string. "
+    "Every list has max 5 items; every sentence stays short."
 )
 
 
@@ -20,12 +41,16 @@ def build_export_prompt(
     metrics: dict,
     sessions: list[dict],
     exercise_breakdown: list[dict] | None,
+    weight_summary: dict | None = None,
+    splits_overview: list[dict] | None = None,
 ) -> str:
     profile = (
         f"User profile: {user.first_name}, {user.age}y, "
         f"goal={user.goal.value if user.goal else 'n/a'}, "
         f"training={user.training_type.value if user.training_type else 'n/a'}, "
-        f"experience={user.experience_level.value if user.experience_level else 'n/a'}."
+        f"experience={user.experience_level.value if user.experience_level else 'n/a'}, "
+        f"profile_weight={user.weight}kg, height={user.height}cm, "
+        f"activity={getattr(user, 'activity_level', None) or 'unspecified'}."
     )
 
     scope_parts = [f"Date range: {start_date} to {end_date}."]
@@ -64,16 +89,67 @@ def build_export_prompt(
             )
         breakdown_block = "Per-exercise breakdown:\n" + "\n".join(lines) + "\n\n"
 
+    weight_block = ""
+    if weight_summary and weight_summary.get("entries", 0) > 0:
+        lines = [
+            f"- Entries logged: {weight_summary['entries']}",
+            f"- Start weight: {weight_summary.get('start_weight')}kg",
+            f"- End weight: {weight_summary.get('end_weight')}kg",
+            f"- Total change: {weight_summary.get('total_change')}kg",
+            f"- Rate of change: {weight_summary.get('rate_of_change')}kg/week",
+        ]
+        detailed = weight_summary.get("detailed_entries", [])
+        if detailed:
+            sample_lines = []
+            for entry in detailed[:12]:
+                bit = f"  {entry['date']}: {entry['weight_kg']}kg"
+                if "waist_cm" in entry:
+                    bit += f", waist {entry['waist_cm']}cm"
+                if "body_fat_pct" in entry:
+                    bit += f", bf {entry['body_fat_pct']}%"
+                if "note" in entry:
+                    bit += f" — {entry['note']}"
+                sample_lines.append(bit)
+            lines.append("Recent log entries:\n" + "\n".join(sample_lines))
+        weight_block = "Weight data for this range:\n" + "\n".join(lines) + "\n\n"
+    else:
+        weight_block = "Weight data: none logged in this range.\n\n"
+
+    splits_block = ""
+    if splits_overview:
+        lines = []
+        for sp in splits_overview:
+            day = str(sp.get("day", "")).capitalize()
+            name = sp.get("name") or ""
+            lines.append(f"  {day} — {name}")
+            exs = sp.get("exercises") or []
+            if not exs:
+                lines.append("    (rest / no exercises)")
+                continue
+            for i, ex in enumerate(exs, 1):
+                bit = (
+                    f"    {i}. {ex['name']} — {ex['default_sets']} sets, "
+                    f"{ex['rest_seconds']}s rest"
+                )
+                if ex.get("exercise_type") and ex["exercise_type"] != "standard":
+                    bit += f" [{ex['exercise_type']}]"
+                if ex.get("notes"):
+                    bit += f" (notes: {ex['notes']})"
+                lines.append(bit)
+        splits_block = "Current weekly split:\n" + "\n".join(lines) + "\n\n"
+
     return (
         f"{profile}\n\n"
         f"{scope}\n\n"
         f"Aggregate metrics:\n" + "\n".join(metrics_lines) + "\n\n"
-        f"Per-session log (most recent first up to 25):\n"
+        f"Per-session log (up to 25):\n"
         + ("\n".join(sessions_lines) if sessions_lines else "  (no sessions)")
         + "\n\n"
         f"{breakdown_block}"
-        "Write a concise report summarizing the user's performance over this period, "
-        "call out 3-5 highlights (PRs, volume trends, consistency, weaknesses), and "
-        "provide 3-5 actionable suggestions tailored to the data and the user's goal. "
+        f"{weight_block}"
+        f"{splits_block}"
+        "Write the full JSON report: training summary, 2-4 highlights, 2-4 training suggestions, "
+        "nutrition_advice grounded in the weight trend vs the user's goal (increase / keep / decrease calories), "
+        "and split_feedback judging whether the current weekly split needs modification based on what was actually trained. "
         "Return JSON only."
     )

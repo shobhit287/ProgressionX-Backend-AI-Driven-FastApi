@@ -185,6 +185,77 @@ class ExportService:
             )
         return breakdown
 
+    async def _fetch_weight_summary(
+        self,
+        user_id: UUID,
+        start_date: date,
+        end_date: date,
+    ) -> Optional[dict]:
+        """Weight analytics over the export range. Returns None on failure /
+        absent logs so the rest of the report can still render."""
+        from features.weight_log.weight_log_service import WeightLogService
+        try:
+            analytics = await WeightLogService(self.db).get_analytics(
+                user_id, from_date=start_date, to_date=end_date
+            )
+        except Exception as e:
+            logger.warning("export.weight_analytics.fail user=%s error=%s", user_id, e)
+            return None
+        if not analytics or analytics.get("entries", 0) == 0:
+            return None
+
+        detailed = analytics.get("detailed_entries", []) or []
+        start_weight = detailed[0]["weight_kg"] if detailed else None
+        end_weight = detailed[-1]["weight_kg"] if detailed else None
+        return {
+            "entries": analytics.get("entries", 0),
+            "total_change": analytics.get("total_change", 0.0),
+            "rate_of_change": analytics.get("rate_of_change", 0.0),
+            "weekly_averages": analytics.get("weekly_averages", []),
+            "detailed_entries": detailed,
+            "start_weight": start_weight,
+            "end_weight": end_weight,
+        }
+
+    async def _fetch_splits_overview(self, user_id: UUID) -> list[dict]:
+        """Current weekly split with exercises — for AI split feedback."""
+        from features.split_exercise.split_exercise_service import SplitExerciseService
+        ex_service = SplitExerciseService(self.db)
+
+        result = await self.db.execute(
+            select(WorkoutSplit).where(WorkoutSplit.user_id == user_id)
+        )
+        splits = result.scalars().all()
+
+        days_order = {
+            "monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3,
+            "friday": 4, "saturday": 5, "sunday": 6,
+        }
+        out = []
+        for s in splits:
+            exercises = await ex_service.get_all_by_split(s.id, user_id)
+            out.append({
+                "day": s.day.value if hasattr(s.day, "value") else str(s.day),
+                "name": s.name,
+                "description": s.description,
+                "exercises": [
+                    {
+                        "name": ex.name,
+                        "default_sets": ex.default_sets,
+                        "rest_seconds": ex.rest_seconds,
+                        "exercise_type": (
+                            ex.exercise_type.value
+                            if hasattr(ex.exercise_type, "value")
+                            else str(ex.exercise_type)
+                        ),
+                        "notes": ex.notes,
+                    }
+                    for ex in exercises
+                ],
+            })
+        out.sort(key=lambda x: days_order.get(str(x["day"]).lower(), 99))
+        return out
+
     async def _fetch_exercise_progression(
         self,
         user_id: UUID,
@@ -272,6 +343,8 @@ class ExportService:
         metrics: dict,
         sessions: list[dict],
         breakdown: list[dict] | None,
+        weight_summary: Optional[dict] = None,
+        splits_overview: Optional[list[dict]] = None,
     ) -> dict:
         if metrics["session_count"] == 0:
             return {
@@ -280,9 +353,9 @@ class ExportService:
                     "date range or removing filters."
                 ),
                 "highlights": [],
-                "suggestions": [
-                    "Log a session to begin tracking progress.",
-                ],
+                "suggestions": ["Log a session to begin tracking progress."],
+                "nutrition_advice": "",
+                "split_feedback": "",
             }
         prompt = build_export_prompt(
             user,
@@ -293,17 +366,21 @@ class ExportService:
             metrics,
             sessions,
             breakdown,
+            weight_summary=weight_summary,
+            splits_overview=splits_overview,
         )
         try:
             result = await groq_client.generate_json(
                 prompt,
                 system_instruction=EXPORT_SYSTEM_INSTRUCTION,
-                max_tokens=900,
+                max_tokens=1100,
             )
             return {
                 "summary": result.get("summary") or "",
                 "highlights": result.get("highlights") or [],
                 "suggestions": result.get("suggestions") or [],
+                "nutrition_advice": result.get("nutrition_advice") or "",
+                "split_feedback": result.get("split_feedback") or "",
             }
         except Exception as e:
             logger.warning(f"LLM summary failed: {e}")
@@ -311,6 +388,8 @@ class ExportService:
                 "summary": "AI summary is currently unavailable. The metrics above reflect your training in the selected range.",
                 "highlights": [],
                 "suggestions": [],
+                "nutrition_advice": "",
+                "split_feedback": "",
             }
 
     @classmethod
@@ -418,6 +497,9 @@ class ExportService:
                 user_id, exercise_name, start_date, end_date
             )
 
+        weight_summary = await self._fetch_weight_summary(user_id, start_date, end_date)
+        splits_overview = await self._fetch_splits_overview(user_id)
+
         metrics = self._aggregate_metrics(sessions, breakdown)
 
         ai = await self._llm_summary(
@@ -429,6 +511,8 @@ class ExportService:
             metrics,
             sessions,
             breakdown if not exercise_name else None,
+            weight_summary=weight_summary,
+            splits_overview=splits_overview,
         )
 
         return self._render_pdf(
@@ -441,6 +525,8 @@ class ExportService:
             sessions=sessions,
             breakdown=breakdown,
             exercise_progression=exercise_progression,
+            weight_summary=weight_summary,
+            splits_overview=splits_overview,
             ai=ai,
         )
 
@@ -506,6 +592,8 @@ class ExportService:
         sessions: list[dict],
         breakdown: list[dict],
         exercise_progression: list[dict],
+        weight_summary: Optional[dict],
+        splits_overview: Optional[list[dict]],
         ai: dict,
     ) -> bytes:
         import matplotlib
@@ -691,6 +779,77 @@ class ExportService:
             story.append(Paragraph("Suggestions", h2))
             for s in ai["suggestions"]:
                 story.append(Paragraph(f"• {s}", body))
+
+        # Weight & Nutrition
+        story.append(Paragraph("Weight & Nutrition", h2))
+        if weight_summary and weight_summary.get("entries", 0) > 0:
+            w_rows = [
+                ["Entries logged", f"{weight_summary['entries']}"],
+                ["Start weight", f"{weight_summary.get('start_weight')} kg"],
+                ["End weight", f"{weight_summary.get('end_weight')} kg"],
+                [
+                    "Total change",
+                    f"{weight_summary.get('total_change'):+g} kg".replace("+-", "-"),
+                ],
+                [
+                    "Rate of change",
+                    f"{weight_summary.get('rate_of_change'):+g} kg/week".replace("+-", "-"),
+                ],
+            ]
+            w_tbl = Table(w_rows, colWidths=[5 * cm, 5 * cm])
+            w_tbl.setStyle(
+                TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#f1f5f9")),
+                        ("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor("#475569")),
+                        ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
+                        ("FONTNAME", (1, 0), (1, -1), "Helvetica-Bold"),
+                        ("FONTSIZE", (0, 0), (-1, -1), 10),
+                        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+                        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#e2e8f0")),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                        ("TOPPADDING", (0, 0), (-1, -1), 6),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                    ]
+                )
+            )
+            story.append(w_tbl)
+            story.append(Spacer(1, 6))
+        else:
+            story.append(
+                Paragraph(
+                    "No weight entries logged in this range.", muted
+                )
+            )
+            story.append(Spacer(1, 4))
+
+        if ai.get("nutrition_advice"):
+            story.append(Paragraph(ai["nutrition_advice"], body))
+
+        # Split feedback
+        if splits_overview:
+            story.append(Paragraph("Split Feedback", h2))
+            sp_lines = []
+            for sp in splits_overview:
+                day = str(sp.get("day", "")).capitalize()
+                name = sp.get("name") or ""
+                count = len(sp.get("exercises") or [])
+                sp_lines.append(
+                    f"• <b>{day}</b> — {name} ({count} {'exercise' if count == 1 else 'exercises'})"
+                )
+            for line in sp_lines:
+                story.append(Paragraph(line, body))
+            story.append(Spacer(1, 6))
+            if ai.get("split_feedback"):
+                story.append(Paragraph(ai["split_feedback"], body))
+            else:
+                story.append(
+                    Paragraph(
+                        "No specific changes recommended — split is aligned with the data in this range.",
+                        muted,
+                    )
+                )
 
         # Session log
         if sessions:
