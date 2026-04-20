@@ -79,10 +79,15 @@ async def _log_llm_call(
             session.add(log)
             await session.commit()
     except Exception:
-        # Never let logging failures break the actual AI response, but make the
-        # failure visible — silent warnings get lost and the dashboard ends up
-        # showing 0 calls forever.
-        logger.exception("Failed to log LLM call")
+        # Never let logging failures break the actual AI response. Log loudly
+        # — previously a schema-mismatch here silently zeroed the admin LLM
+        # dashboard for weeks before anyone noticed.
+        logger.exception(
+            "Failed to persist LLM call log (endpoint=%s, model=%s, status=%s)",
+            _llm_endpoint.get(),
+            model,
+            status,
+        )
 
 
 class GroqClient:
