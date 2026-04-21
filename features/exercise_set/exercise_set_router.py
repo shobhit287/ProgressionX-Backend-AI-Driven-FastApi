@@ -41,7 +41,7 @@ async def add_set(
 ):
     service = ExerciseSetService(db)
     exercise_set = await service.add_set(
-        session_id, exercise_id, user.id, data.model_dump()
+        session_id, exercise_id, user.id, data.model_dump(exclude_none=True)
     )
     await db.commit()
     await db.refresh(exercise_set)

@@ -130,12 +130,14 @@ class AIService:
                 "exercises": [
                     {
                         "name": ex.name,
+                        "display_order": ex.display_order,
                         "default_sets": ex.default_sets,
                         "exercise_type": (
                             ex.exercise_type.value
                             if hasattr(ex.exercise_type, "value")
                             else str(ex.exercise_type)
                         ),
+                        "superset_group": ex.superset_group,
                         "rest_seconds": ex.rest_seconds,
                         "notes": ex.notes,
                     }
@@ -385,6 +387,10 @@ class AIService:
                     "displayOrder": int(ex.get("displayOrder") or ex.get("display_order") or i),
                     "defaultSets": int(ex.get("defaultSets") or ex.get("default_sets") or 3),
                     "exerciseType": self._sanitize_exercise_type(ex.get("exerciseType") or ex.get("exercise_type")),
+                    "supersetGroup": self._sanitize_superset_group(
+                        ex.get("supersetGroup") or ex.get("superset_group"),
+                        ex.get("exerciseType") or ex.get("exercise_type"),
+                    ),
                     "restSeconds": int(ex.get("restSeconds") or ex.get("rest_seconds") or 90),
                     "notes": ex.get("notes"),
                 })
@@ -405,6 +411,19 @@ class AIService:
         if value.lower() in valid:
             return value.lower()
         return "standard"
+
+    @staticmethod
+    def _sanitize_superset_group(value, exercise_type) -> int | None:
+        """Only supersets/giant-sets get a group number; anything else → None."""
+        ex_type = (str(exercise_type).lower() if exercise_type else "standard")
+        if ex_type not in ("superset", "giant_set"):
+            return None
+        if value is None:
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
 
     def _normalize_weekly_schedule(self, parsed: dict, user) -> dict:
         days_order = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
@@ -445,6 +464,10 @@ class AIService:
                             "displayOrder": int(ex.get("displayOrder") or ex.get("display_order") or i),
                             "defaultSets": int(ex.get("defaultSets") or ex.get("default_sets") or 3),
                             "exerciseType": self._sanitize_exercise_type(ex.get("exerciseType") or ex.get("exercise_type")),
+                            "supersetGroup": self._sanitize_superset_group(
+                                ex.get("supersetGroup") or ex.get("superset_group"),
+                                ex.get("exerciseType") or ex.get("exercise_type"),
+                            ),
                             "restSeconds": int(ex.get("restSeconds") or ex.get("rest_seconds") or 90),
                             "notes": ex.get("notes"),
                         })

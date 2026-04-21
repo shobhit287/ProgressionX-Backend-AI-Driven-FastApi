@@ -63,6 +63,10 @@ FITNESS_CHAT_SYSTEM_INSTRUCTION = (
 SESSION_PLAN_SYSTEM_INSTRUCTION = (
     "You are an elite strength & hypertrophy coach generating a precise workout session.\n\n"
 
+    "DATA SHAPE NOTES:\n"
+    "- Split-plan exercises inside '[Superset — perform back-to-back]' / '[Giant Set — perform back-to-back]' blocks are paired: same set count, shorter rest between rounds.\n"
+    "- History sets marked '[TOP OF DROPSET]' with '↘ drop:' lines are dropset chains — the drops were done with no rest after the top set.\n\n"
+
     "PRIMARY OBJECTIVE:\n"
     "Maximize progression while controlling fatigue.\n\n"
 
@@ -126,11 +130,23 @@ WEEKLY_SCHEDULE_SYSTEM_INSTRUCTION = (
     "6. Pick exercise count per day based on experience: beginner 4-5, intermediate 5-7, advanced 6-9.\n"
     "7. Choose default sets based on training type: hypertrophy 3-4, strength 4-5, powerbuilding 3-5, endurance 2-3, general_fitness 3.\n"
     "8. Choose rest_seconds based on training type: hypertrophy 90, strength 180, powerbuilding 120, endurance 60, general_fitness 90.\n"
-    "9. exerciseType MUST be one of: 'standard', 'superset', 'dropset'. Do NOT use 'compound' or 'isolation'. Only use 'superset' for accessory pairings on intermediate/advanced.\n"
-    "10. Use real, well-known exercise names (e.g. 'Barbell Bench Press', 'Romanian Deadlift', 'Lat Pulldown').\n"
-    "11. displayOrder starts at 1 within each day and increments.\n"
+    "9. exerciseType MUST be one of: 'standard', 'superset', 'giant_set'. Do NOT use 'compound', 'isolation', or 'dropset' — dropsets are decided per-set during the workout, not at the programming stage.\n"
+    "10. SUPERSET / GIANT SET PAIRING — CRITICAL:\n"
+    "   - A superset pairs exactly 2 exercises performed back-to-back (e.g. biceps + triceps, quads + hams).\n"
+    "   - A giant_set pairs 3+ exercises performed back-to-back (usually for arms or shoulders finishers).\n"
+    "   - When you use exerciseType='superset' or 'giant_set', you MUST set supersetGroup (integer) on EVERY exercise in that group — all paired exercises get the SAME supersetGroup number.\n"
+    "   - supersetGroup numbering starts at 1 within each day and increments per group. Exercises with exerciseType='standard' or 'dropset' MUST set supersetGroup to null.\n"
+    "   - Pair exercises that make biomechanical sense (antagonistic pairs or synergistic same-muscle pairs). Don't superset two heavy compounds (e.g. squat + deadlift).\n"
+    "   - Only use supersets/giant sets for intermediate/advanced users. Beginners: standard only.\n"
+    "11. Use real, well-known exercise names (e.g. 'Barbell Bench Press', 'Romanian Deadlift', 'Lat Pulldown').\n"
+    "12. displayOrder starts at 1 within each day and increments. Paired superset exercises get consecutive displayOrder values.\n"
     "You MUST respond with valid JSON in this exact format and NOTHING else:\n"
-    '{"days": [{"day": "monday", "name": "Push Day", "description": "Chest, shoulders, triceps", "isRest": false, "exercises": [{"name": "Barbell Bench Press", "displayOrder": 1, "defaultSets": 4, "exerciseType": "standard", "restSeconds": 120, "notes": null}]}]}\n'
+    '{"days": [{"day": "monday", "name": "Push Day", "description": "Chest, shoulders, triceps", "isRest": false, '
+    '"exercises": ['
+    '{"name": "Barbell Bench Press", "displayOrder": 1, "defaultSets": 4, "exerciseType": "standard", "supersetGroup": null, "restSeconds": 120, "notes": null}, '
+    '{"name": "Incline Dumbbell Curl", "displayOrder": 4, "defaultSets": 3, "exerciseType": "superset", "supersetGroup": 1, "restSeconds": 60, "notes": null}, '
+    '{"name": "Triceps Rope Pushdown", "displayOrder": 5, "defaultSets": 3, "exerciseType": "superset", "supersetGroup": 1, "restSeconds": 60, "notes": null}'
+    ']}]}\n'
     "Do NOT include any text outside the JSON."
 )
 
@@ -146,9 +162,20 @@ SPLIT_CUSTOMIZATION_SYSTEM_INSTRUCTION = (
     "3. Ensure the new exercises complement their other existing splits.\n"
     "4. Choose default sets and rest based on their training type (hypertrophy, strength, etc.).\n"
     "5. Use real, well-known exercise names.\n"
-    "6. exerciseType MUST be one of: 'standard', 'superset', 'dropset'. Do NOT use 'compound' or 'isolation'.\n"
+    "6. exerciseType MUST be one of: 'standard', 'superset', 'giant_set'. Do NOT use 'compound', 'isolation', or 'dropset' — dropsets are decided per-set during the workout, not at the programming stage.\n"
+    "7. SUPERSET / GIANT SET PAIRING — CRITICAL:\n"
+    "   - Superset = 2 exercises back-to-back. Giant set = 3+ exercises back-to-back.\n"
+    "   - When you use exerciseType='superset' or 'giant_set', you MUST set supersetGroup (integer, starts at 1 for this day) on EVERY exercise in the group — all paired exercises share the SAME supersetGroup value.\n"
+    "   - Exercises with exerciseType='standard' MUST set supersetGroup to null.\n"
+    "   - Pair biomechanically-sensible exercises (antagonists or same-muscle accessories). Don't superset two heavy compounds.\n"
+    "   - Paired exercises take consecutive displayOrder values.\n"
     "You MUST respond with valid JSON in this exact format and NOTHING else:\n"
-    '{"day": "monday", "name": "Push Day", "description": "Chest, shoulders, triceps", "isRest": false, "exercises": [{"name": "Barbell Bench Press", "displayOrder": 1, "defaultSets": 4, "exerciseType": "standard", "restSeconds": 120, "notes": null}]}\n'
+    '{"day": "monday", "name": "Push Day", "description": "Chest, shoulders, triceps", "isRest": false, '
+    '"exercises": ['
+    '{"name": "Barbell Bench Press", "displayOrder": 1, "defaultSets": 4, "exerciseType": "standard", "supersetGroup": null, "restSeconds": 120, "notes": null}, '
+    '{"name": "DB Biceps Curl", "displayOrder": 4, "defaultSets": 3, "exerciseType": "superset", "supersetGroup": 1, "restSeconds": 60, "notes": null}, '
+    '{"name": "Triceps Rope Pushdown", "displayOrder": 5, "defaultSets": 3, "exerciseType": "superset", "supersetGroup": 1, "restSeconds": 60, "notes": null}'
+    ']}\n'
     "Do NOT include any text outside the JSON."
 )
 
@@ -205,11 +232,7 @@ def build_split_customization_prompt(
 
     context += f"\n=== CURRENT PLAN FOR {target_split.day.upper()} ({target_split.name}) ===\n"
     if target_exercises:
-        for i, ex in enumerate(target_exercises, 1):
-            context += f"  {i}. {ex.name} — {ex.default_sets} sets"
-            if ex.notes:
-                context += f" (notes: {ex.notes})"
-            context += "\n"
+        context += _format_split_exercises(target_exercises)
     else:
         context += "  (no exercises currently)\n"
 
@@ -256,7 +279,12 @@ SESSION_COACH_SYSTEM_INSTRUCTION = (
     "You are a real-time gym coach embedded in a workout tracking app. "
     "The user is mid-session and asking you a quick question about their current workout. "
     "You have access to their split plan (exercises + target sets), current session logs, "
-    "and their previous 4-5 sessions for the same split. "
+    "and their previous 4-5 sessions for the same split.\n\n"
+
+    "DATA SHAPE NOTES:\n"
+    "- Split plan exercises inside a '[Superset — perform back-to-back]' or '[Giant Set — perform back-to-back]' block are paired: user alternates sets between them with minimal rest.\n"
+    "- A set marked '[TOP OF DROPSET]' is the heavy working set; '↘ drop:' lines under it are the lighter drops completed immediately after (no rest). Count drops toward fatigue/volume but NOT toward target set count.\n\n"
+
     "Give SHORT, direct, actionable advice. No fluff. "
     "Consider their recent progression, fatigue indicators (RIR trends), and volume. "
     "IMPORTANT: When the user asks about 'next weight', 'next set', or 'this exercise' "
@@ -281,6 +309,135 @@ SESSION_COACH_SYSTEM_INSTRUCTION = (
 
 
 # ── prompt builders ──────────────────────────────────────────────────
+
+def _format_split_exercises(split_exercises: list) -> str:
+    """Render split exercises grouping superset/giant_set companions.
+
+    Exercises sharing a superset_group are rendered together as a bracketed
+    group so the LLM understands they're paired. `split_exercises` items are
+    SplitExercise ORM objects or dicts with keys: name, default_sets,
+    exercise_type, superset_group, rest_seconds, notes.
+    """
+    if not split_exercises:
+        return "  (no exercises)\n"
+
+    def _get(item, key, default=None):
+        if isinstance(item, dict):
+            return item.get(key, default)
+        return getattr(item, key, default)
+
+    groups: dict = {}
+    standalone: list = []
+    order_index: list = []
+    for ex in split_exercises:
+        ex_type = _get(ex, "exercise_type")
+        if hasattr(ex_type, "value"):
+            ex_type = ex_type.value
+        ex_type = (ex_type or "standard").lower()
+        group = _get(ex, "superset_group")
+        if ex_type in ("superset", "giant_set") and group is not None:
+            groups.setdefault(group, {"type": ex_type, "items": []})
+            groups[group]["items"].append(ex)
+            if group not in order_index:
+                order_index.append(group)
+        else:
+            standalone.append(ex)
+
+    lines: list[str] = []
+    i = 1
+    # Standalone first in display_order, then groups.  Preserve natural order
+    # as best as we can: interleave standalones and groups by the first
+    # member's display_order if available.
+    def _display_order(item):
+        return _get(item, "display_order", 999)
+
+    # Build combined ordered list of "entries": either a single exercise or a group
+    entries: list = []
+    consumed_groups: set = set()
+    all_items = list(split_exercises)
+    for ex in all_items:
+        ex_type = _get(ex, "exercise_type")
+        if hasattr(ex_type, "value"):
+            ex_type = ex_type.value
+        ex_type = (ex_type or "standard").lower()
+        group = _get(ex, "superset_group")
+        if ex_type in ("superset", "giant_set") and group is not None:
+            if group in consumed_groups:
+                continue
+            consumed_groups.add(group)
+            entries.append(("group", group, groups[group]))
+        else:
+            entries.append(("solo", None, ex))
+
+    for entry in entries:
+        kind = entry[0]
+        if kind == "solo":
+            ex = entry[2]
+            line = (
+                f"  {i}. {_get(ex, 'name') or 'Exercise'} — "
+                f"{_get(ex, 'default_sets', 3)} sets, "
+                f"{_get(ex, 'rest_seconds', 90)}s rest"
+            )
+            if _get(ex, "notes"):
+                line += f" (notes: {_get(ex, 'notes')})"
+            lines.append(line)
+            i += 1
+        else:
+            g = entry[2]
+            label = "Superset" if g["type"] == "superset" else "Giant Set"
+            items = g["items"]
+            lines.append(f"  {i}. [{label} — perform back-to-back]:")
+            for j, ex in enumerate(items, 1):
+                line = (
+                    f"     {chr(ord('a') + j - 1)}. {_get(ex, 'name') or 'Exercise'} — "
+                    f"{_get(ex, 'default_sets', 3)} sets, "
+                    f"{_get(ex, 'rest_seconds', 90)}s rest"
+                )
+                if _get(ex, "notes"):
+                    line += f" (notes: {_get(ex, 'notes')})"
+                lines.append(line)
+            i += 1
+
+    return "\n".join(lines) + "\n"
+
+
+def _format_session_sets(sets: list) -> list[str]:
+    """Render logged sets grouped into dropset chains.
+
+    Top sets render on one line; their drops render indented below.
+    `sets` items are ExerciseSet ORM objects (order by set_number).
+    Returns a list of lines (no trailing newline).
+    """
+    by_id = {s.id: s for s in sets}
+    children: dict = {}
+    for s in sets:
+        if s.parent_set_id and s.parent_set_id in by_id:
+            children.setdefault(s.parent_set_id, []).append(s)
+
+    lines: list[str] = []
+    for s in sorted(sets, key=lambda x: x.set_number):
+        # Skip drops here — they're rendered under their parent.
+        if s.parent_set_id and s.parent_set_id in by_id:
+            continue
+        warmup = " [WARMUP]" if s.is_warmup else ""
+        rir = f", RIR {s.reps_in_reserve}" if s.reps_in_reserve is not None else ""
+        desc = f" — note: {s.description}" if s.description else ""
+        dropset_marker = " [TOP OF DROPSET]" if children.get(s.id) else ""
+        lines.append(
+            f"  Set {s.set_number}: {s.weight_kg}kg x {s.reps}{rir}{warmup}{dropset_marker}{desc}"
+        )
+        for drop in sorted(children.get(s.id, []), key=lambda x: x.set_number):
+            d_rir = (
+                f", RIR {drop.reps_in_reserve}"
+                if drop.reps_in_reserve is not None
+                else ""
+            )
+            d_desc = f" — note: {drop.description}" if drop.description else ""
+            lines.append(
+                f"    ↘ drop: {drop.weight_kg}kg x {drop.reps}{d_rir}{d_desc}"
+            )
+    return lines
+
 
 def _user_profile_line(user) -> str:
     """Compact one-line user profile for prompts."""
@@ -487,16 +644,14 @@ def build_session_coach_prompt(
     question: str,
     split_exercises: list | None = None,
 ) -> str:
-    # Split plan context (target exercises and sets)
+    # Split plan context (target exercises) — grouped by superset
     split_ctx = ""
     if split_exercises:
-        split_ctx = "=== SPLIT PLAN (target exercises & sets for this session) ===\n"
-        for i, se in enumerate(split_exercises, 1):
-            split_ctx += f"  {i}. {se.name} — {se.default_sets} sets"
-            if se.notes:
-                split_ctx += f" (notes: {se.notes})"
-            split_ctx += "\n"
-        split_ctx += "\n"
+        split_ctx = (
+            "=== SPLIT PLAN (target exercises & sets for this session) ===\n"
+            + _format_split_exercises(split_exercises)
+            + "\n"
+        )
 
     # Build a map of exercise name -> target sets from split plan
     target_sets_map = {}
@@ -504,35 +659,36 @@ def build_session_coach_prompt(
         for se in split_exercises:
             target_sets_map[se.name.lower()] = se.default_sets
 
-    # Current session context with completion status
+    # Current session: drops do NOT count toward completion.
     current_ctx = "=== CURRENT SESSION (in progress) ===\n"
     for ex in session.exercises:
-        completed_sets = len([s for s in ex.sets if not s.is_warmup])
+        completed_sets = len(
+            [s for s in ex.sets if not s.is_warmup and s.parent_set_id is None]
+        )
         target = target_sets_map.get(ex.exercise_name.lower(), "?")
-        status = "DONE" if target != "?" and completed_sets >= target else f"{completed_sets}/{target} sets done"
+        status = (
+            "DONE"
+            if target != "?" and completed_sets >= target
+            else f"{completed_sets}/{target} sets done"
+        )
         current_ctx += f"\n{ex.exercise_name} [{status}]:\n"
         if not ex.sets:
             current_ctx += "  (no sets logged yet)\n"
-        for s in ex.sets:
-            warmup = " [WARMUP]" if s.is_warmup else ""
-            dropset = " [DROPSET]" if s.is_dropset else ""
-            rir = f", RIR {s.reps_in_reserve}" if s.reps_in_reserve is not None else ""
-            desc = f" — note: {s.description}" if s.description else ""
-            current_ctx += f"  Set {s.set_number}: {s.weight_kg}kg x {s.reps} reps{rir}{warmup}{dropset}{desc}\n"
+            continue
+        for line in _format_session_sets(ex.sets):
+            current_ctx += line + "\n"
 
-    # History context
-    history_ctx = f"\n=== PREVIOUS SESSIONS (same split, last {len(past_sessions)} sessions) ===\n"
+    # History context — drop chains rendered under parent
+    history_ctx = (
+        f"\n=== PREVIOUS SESSIONS (same split, last {len(past_sessions)} sessions) ===\n"
+    )
     for ps in past_sessions:
         ps_date = ps.started_at.strftime("%a, %b %d") if ps.started_at else "?"
         history_ctx += f"\n--- {ps_date} ---\n"
         for ex in ps.exercises:
             history_ctx += f"{ex.exercise_name}:\n"
-            for s in ex.sets:
-                warmup = " [W]" if s.is_warmup else ""
-                dropset = " [D]" if s.is_dropset else ""
-                rir = f", RIR {s.reps_in_reserve}" if s.reps_in_reserve is not None else ""
-                desc = f" — note: {s.description}" if s.description else ""
-                history_ctx += f"  Set {s.set_number}: {s.weight_kg}kg x {s.reps}{rir}{warmup}{dropset}{desc}\n"
+            for line in _format_session_sets(ex.sets):
+                history_ctx += line + "\n"
 
     return (
         f"User: {_user_profile_line(user)}\n\n"
@@ -573,22 +729,11 @@ def build_split_analysis_prompt(
             if split.get("description"):
                 context += f" ({split['description']})"
             context += "\n"
-
             exercises = split.get("exercises") or []
             if not exercises:
                 context += "  (rest day / no exercises)\n"
                 continue
-            for i, ex in enumerate(exercises, 1):
-                line = (
-                    f"  {i}. {ex['name']} — {ex['default_sets']} sets, "
-                    f"{ex['rest_seconds']}s rest"
-                )
-                ex_type = ex.get("exercise_type")
-                if ex_type and ex_type != "standard":
-                    line += f" [{ex_type}]"
-                if ex.get("notes"):
-                    line += f" (notes: {ex['notes']})"
-                context += line + "\n"
+            context += _format_split_exercises(exercises)
 
     prompt = (
         f"{context}\n"
@@ -604,15 +749,10 @@ def build_session_plan_prompt(
     split_exercises: list,
     past_sessions: list,
 ) -> str:
-    # Split plan
-    plan_ctx = "=== TODAY'S SPLIT PLAN ===\n"
-    for i, se in enumerate(split_exercises, 1):
-        plan_ctx += f"  {i}. {se.name} — {se.default_sets} working sets"
-        if se.notes:
-            plan_ctx += f" (notes: {se.notes})"
-        plan_ctx += "\n"
+    # Split plan — supersets/giant sets grouped so the AI pairs reps correctly
+    plan_ctx = "=== TODAY'S SPLIT PLAN ===\n" + _format_split_exercises(split_exercises)
 
-    # Past sessions with dates (including gaps)
+    # Past sessions with dates (including gaps), dropset chains rendered
     history_ctx = ""
     if past_sessions:
         history_ctx = f"\n=== PREVIOUS SESSIONS ({len(past_sessions)} sessions, most recent first) ===\n"
@@ -621,12 +761,8 @@ def build_session_plan_prompt(
             history_ctx += f"\n--- {ps_date} ---\n"
             for ex in ps.exercises:
                 history_ctx += f"{ex.exercise_name}:\n"
-                for s in ex.sets:
-                    warmup = " [WARMUP]" if s.is_warmup else ""
-                    dropset = " [DROPSET]" if s.is_dropset else ""
-                    rir = f", RIR {s.reps_in_reserve}" if s.reps_in_reserve is not None else ""
-                    desc = f" — note: {s.description}" if s.description else ""
-                    history_ctx += f"  Set {s.set_number}: {s.weight_kg}kg x {s.reps}{rir}{warmup}{dropset}{desc}\n"
+                for line in _format_session_sets(ex.sets):
+                    history_ctx += line + "\n"
     else:
         history_ctx = "\n=== NO PREVIOUS SESSIONS FOUND ===\nThis is the user's first time doing this split. Suggest conservative starting weights.\n"
 

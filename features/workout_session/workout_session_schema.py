@@ -45,6 +45,7 @@ class ResponseExerciseSetSchema(BaseModel):
     is_warmup: bool = Field(..., alias="isWarmup")
     is_dropset: bool = Field(..., alias="isDropset")
     description: Optional[str] = Field(None)
+    parent_set_id: Optional[UUID] = Field(None, alias="parentSetId")
     created_at: datetime = Field(..., alias="createdAt")
     updated_at: datetime = Field(..., alias="updatedAt")
 

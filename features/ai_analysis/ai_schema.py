@@ -108,6 +108,7 @@ class GeneratedExercise(BaseModel):
     display_order: int = Field(..., alias="displayOrder")
     default_sets: int = Field(3, alias="defaultSets")
     exercise_type: str = Field("standard", alias="exerciseType")
+    superset_group: Optional[int] = Field(None, alias="supersetGroup")
     rest_seconds: int = Field(90, alias="restSeconds")
     notes: Optional[str] = Field(None)
 

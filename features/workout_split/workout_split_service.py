@@ -22,6 +22,17 @@ class WorkoutSplitService:
         except ValueError:
             return ExerciseTypeEnum.STANDARD
 
+    @staticmethod
+    def _get_superset_group(value, exercise_type: ExerciseTypeEnum) -> int | None:
+        """Keep superset_group only on superset / giant_set rows."""
+        group_types = {ExerciseTypeEnum.SUPERSET, ExerciseTypeEnum.GIANT_SET}
+        if exercise_type not in group_types or value is None:
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
     async def create(self, user_id: UUID, payload: dict):
         payload["user_id"] = user_id
         split = await self.workout_split_repository.create(payload)
@@ -82,12 +93,16 @@ class WorkoutSplitService:
 
             if not d.get("is_rest"):
                 for ex in d.get("exercises", []):
+                    ex_type = self._get_exercise_type(ex.get("exercise_type"))
                     db.add(SplitExercise(
                         split_id=split.id,
                         name=ex["name"],
                         display_order=ex["display_order"],
                         default_sets=ex.get("default_sets", 3),
-                        exercise_type=self._get_exercise_type(ex.get("exercise_type")),
+                        exercise_type=ex_type,
+                        superset_group=self._get_superset_group(
+                            ex.get("superset_group"), ex_type
+                        ),
                         rest_seconds=ex.get("rest_seconds", 90),
                         notes=ex.get("notes"),
                     ))
@@ -116,12 +131,16 @@ class WorkoutSplitService:
         if not data.get("isRest"):
             exercises = data.get("exercises", [])
             for i, ex in enumerate(exercises, 1):
+                ex_type = self._get_exercise_type(ex.get("exerciseType") or ex.get("exercise_type"))
                 db.add(SplitExercise(
                     split_id=split.id,
                     name=ex["name"],
                     display_order=ex.get("displayOrder") or ex.get("display_order") or i,
                     default_sets=ex.get("defaultSets") or ex.get("default_sets") or 3,
-                    exercise_type=self._get_exercise_type(ex.get("exerciseType") or ex.get("exercise_type")),
+                    exercise_type=ex_type,
+                    superset_group=self._get_superset_group(
+                        ex.get("supersetGroup") or ex.get("superset_group"), ex_type
+                    ),
                     rest_seconds=ex.get("restSeconds") or ex.get("rest_seconds") or 90,
                     notes=ex.get("notes"),
                 ))

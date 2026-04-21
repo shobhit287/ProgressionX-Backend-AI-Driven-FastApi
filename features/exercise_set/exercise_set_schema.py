@@ -11,6 +11,7 @@ class CreateExerciseSetSchema(BaseModel):
     is_warmup: bool = Field(False, alias="isWarmup")
     is_dropset: bool = Field(False, alias="isDropset")
     description: Optional[str] = Field(None)
+    parent_set_id: Optional[UUID] = Field(None, alias="parentSetId")
 
     model_config = {
         "populate_by_name": True,
@@ -24,6 +25,7 @@ class UpdateExerciseSetSchema(BaseModel):
     is_warmup: Optional[bool] = Field(None, alias="isWarmup")
     is_dropset: Optional[bool] = Field(None, alias="isDropset")
     description: Optional[str] = Field(None)
+    parent_set_id: Optional[UUID] = Field(None, alias="parentSetId")
 
     model_config = {
         "populate_by_name": True,
@@ -39,6 +41,7 @@ class ResponseExerciseSetSchema(BaseModel):
     is_warmup: bool = Field(..., alias="isWarmup")
     is_dropset: bool = Field(..., alias="isDropset")
     description: Optional[str] = Field(None)
+    parent_set_id: Optional[UUID] = Field(None, alias="parentSetId")
     created_at: datetime = Field(..., alias="createdAt")
     updated_at: datetime = Field(..., alias="updatedAt")
 

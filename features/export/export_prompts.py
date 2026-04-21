@@ -126,16 +126,45 @@ def build_export_prompt(
             if not exs:
                 lines.append("    (rest / no exercises)")
                 continue
-            for i, ex in enumerate(exs, 1):
-                bit = (
-                    f"    {i}. {ex['name']} — {ex['default_sets']} sets, "
-                    f"{ex['rest_seconds']}s rest"
-                )
-                if ex.get("exercise_type") and ex["exercise_type"] != "standard":
-                    bit += f" [{ex['exercise_type']}]"
-                if ex.get("notes"):
-                    bit += f" (notes: {ex['notes']})"
-                lines.append(bit)
+
+            # Group paired superset/giant_set exercises so the AI sees them
+            # as one coherent block instead of two unrelated lines.
+            entries = []
+            consumed: set = set()
+            for ex in exs:
+                ex_type = str(ex.get("exercise_type") or "standard").lower()
+                group = ex.get("superset_group")
+                if ex_type in ("superset", "giant_set") and group is not None:
+                    if group in consumed:
+                        continue
+                    consumed.add(group)
+                    members = [
+                        e for e in exs
+                        if str(e.get("exercise_type") or "").lower() == ex_type
+                        and e.get("superset_group") == group
+                    ]
+                    entries.append(("group", ex_type, members))
+                else:
+                    entries.append(("solo", None, ex))
+
+            for entry in entries:
+                if entry[0] == "solo":
+                    ex = entry[2]
+                    bit = (
+                        f"    - {ex['name']} — {ex['default_sets']} sets, "
+                        f"{ex['rest_seconds']}s rest"
+                    )
+                    if ex.get("notes"):
+                        bit += f" (notes: {ex['notes']})"
+                    lines.append(bit)
+                else:
+                    label = "Superset" if entry[1] == "superset" else "Giant Set"
+                    lines.append(f"    - [{label}]:")
+                    for m in entry[2]:
+                        lines.append(
+                            f"        · {m['name']} — {m['default_sets']} sets, "
+                            f"{m['rest_seconds']}s rest"
+                        )
         splits_block = "Current weekly split:\n" + "\n".join(lines) + "\n\n"
 
     return (

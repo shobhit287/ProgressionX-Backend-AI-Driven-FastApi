@@ -63,6 +63,33 @@ class ExerciseSetService:
         data["session_exercise_id"] = session_exercise_id
         data["set_number"] = set_number
 
+        # Auto-link dropsets to their top set. If the client didn't send
+        # parent_set_id and this is flagged as a dropset, walk back through
+        # this exercise's sets to find the nearest non-dropset top set.
+        if data.get("is_dropset") and not data.get("parent_set_id"):
+            existing = await self.repository.get_all_by_session_exercise(
+                session_exercise_id
+            )
+            top_set_id = None
+            for prior in reversed(existing):
+                if not prior.is_dropset:
+                    top_set_id = prior.id
+                    break
+                if prior.parent_set_id is not None:
+                    top_set_id = prior.parent_set_id
+                    break
+            if top_set_id is not None:
+                data["parent_set_id"] = top_set_id
+
+        # Validate parent_set_id if supplied: must be a set on the same
+        # session_exercise (prevents cross-exercise linking).
+        if data.get("parent_set_id"):
+            parent = await self.repository.get_by_id(data["parent_set_id"])
+            if parent.session_exercise_id != session_exercise_id:
+                raise BaseDomainError(
+                    "parent_set_id must reference a set on the same exercise", 400
+                )
+
         return await self.repository.create(data)
 
     async def update_set(self, set_id: UUID, session_id: UUID, user_id: UUID, data: dict):

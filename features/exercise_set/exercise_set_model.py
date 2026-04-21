@@ -18,6 +18,7 @@ class ExerciseSet(Base):
 
     __table_args__ = (
         Index("ix_exercise_sets_session_exercise_set", "session_exercise_id", "set_number"),
+        Index("ix_exercise_sets_parent_set_id", "parent_set_id"),
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
@@ -33,5 +34,12 @@ class ExerciseSet(Base):
     is_warmup = Column(Boolean, nullable=False, default=False)
     is_dropset = Column(Boolean, nullable=False, default=False)
     description = Column(Text, nullable=True)
+    # For dropsets: points at the top (main) set this drop belongs to.
+    # NULL on all standard sets and on the top set of a dropset group.
+    parent_set_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("exercise_sets.id", ondelete="CASCADE"),
+        nullable=True,
+    )
 
     session_exercise = relationship("SessionExercise", back_populates="sets")

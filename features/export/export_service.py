@@ -248,6 +248,8 @@ class ExportService:
                             if hasattr(ex.exercise_type, "value")
                             else str(ex.exercise_type)
                         ),
+                        "superset_group": ex.superset_group,
+                        "display_order": ex.display_order,
                         "notes": ex.notes,
                     }
                     for ex in exercises
