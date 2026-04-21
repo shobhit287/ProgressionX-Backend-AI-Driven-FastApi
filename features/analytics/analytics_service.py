@@ -8,6 +8,14 @@ from features.workout_session.workout_session_model import WorkoutSession
 from features.workout_session.session_exercise_model import SessionExercise
 from features.exercise_set.exercise_set_model import ExerciseSet
 from features.workout_session.workout_session_enum import SessionStatusEnum
+from features.workout_split.workout_split_model import WorkoutSplit
+from features.split_exercise.split_exercise_model import SplitExercise
+
+
+_DAY_TO_WEEKDAY = {
+    "monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3,
+    "friday": 4, "saturday": 5, "sunday": 6,
+}
 
 
 class AnalyticsService:
@@ -215,29 +223,52 @@ class AnalyticsService:
         total_result = await self.db.execute(total_query)
         total_sessions = total_result.scalar() or 0
 
-        # Current streak: consecutive days with at least one completed session
+        # Current streak: consecutive training days with a completed session,
+        # skipping rest days (weekdays where the user has no programmed exercises).
         dates_query = (
             select(func.distinct(cast(WorkoutSession.started_at, Date)).label("session_date"))
             .where(
                 WorkoutSession.user_id == user_id,
                 WorkoutSession.status == SessionStatusEnum.COMPLETED,
             )
-            .order_by(cast(WorkoutSession.started_at, Date).desc())
         )
         dates_result = await self.db.execute(dates_query)
-        session_dates = [row.session_date for row in dates_result.all()]
+        session_date_set = {row.session_date for row in dates_result.all()}
+
+        # A weekday is a "training day" if the user has ≥1 SplitExercise on it.
+        # Empty splits (AI-generated "Rest Day" or manually stripped) and days
+        # with no split at all count as rest.
+        training_days_query = (
+            select(func.distinct(WorkoutSplit.day))
+            .join(SplitExercise, SplitExercise.split_id == WorkoutSplit.id)
+            .where(WorkoutSplit.user_id == user_id)
+        )
+        training_days_result = await self.db.execute(training_days_query)
+        training_weekdays: set[int] = set()
+        for row in training_days_result.all():
+            day_value = row[0].value if hasattr(row[0], "value") else str(row[0])
+            wd = _DAY_TO_WEEKDAY.get(str(day_value).lower())
+            if wd is not None:
+                training_weekdays.add(wd)
 
         current_streak = 0
-        if session_dates:
-            # A streak is still active if the most recent session was today or yesterday
-            if session_dates[0] >= today - timedelta(days=1):
-                check_date = session_dates[0]
-                for d in session_dates:
-                    if d == check_date:
+        if training_weekdays:
+            # Walk back from today. On a training day: require a session to
+            # continue (one grace pass for today itself, so "not trained yet
+            # today" doesn't instantly reset). On a rest day: skip without
+            # counting or breaking. Hard cap at 365 days.
+            check_date = today
+            gave_today_grace = False
+            for _ in range(365):
+                weekday = check_date.weekday()
+                if weekday in training_weekdays:
+                    if check_date in session_date_set:
                         current_streak += 1
-                        check_date -= timedelta(days=1)
+                    elif check_date == today and not gave_today_grace:
+                        gave_today_grace = True
                     else:
                         break
+                check_date -= timedelta(days=1)
 
         # Recent personal records: best estimated 1RM per exercise from last 30 days
         thirty_days_ago = today - timedelta(days=30)
