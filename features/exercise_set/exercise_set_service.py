@@ -152,6 +152,7 @@ class ExerciseSetService:
                         "weight_kg": s.weight_kg,
                         "reps": s.reps,
                         "reps_in_reserve": s.reps_in_reserve,
+                        "description": s.description,
                     }
                     for s in ex.sets
                 ],
