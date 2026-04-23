@@ -141,10 +141,17 @@ class ExerciseSetService:
         if not prev_session:
             return {}
 
-        # Build map: exercise_name (lowered) -> list of sets sorted by set_number
+        # Build map: exercise_name (lowered) -> list of sets sorted by set_number.
+        # Also flag any top set that had drops attached (new-model dropset) so
+        # the UI can show the ↘ marker on the prev hint.
         prev_map: dict[str, list[dict]] = {}
         for ex in prev_session.exercises:
             key = ex.exercise_name.lower()
+            child_count: dict = {}
+            for s in ex.sets:
+                if s.parent_set_id is not None:
+                    child_count[s.parent_set_id] = child_count.get(s.parent_set_id, 0) + 1
+
             sets_data = sorted(
                 [
                     {
@@ -152,6 +159,11 @@ class ExerciseSetService:
                         "weight_kg": s.weight_kg,
                         "reps": s.reps,
                         "reps_in_reserve": s.reps_in_reserve,
+                        "is_warmup": s.is_warmup,
+                        # Legacy rows (no parent, is_dropset=true) stay marked.
+                        # New top-of-dropset rows flagged via had_drops.
+                        "is_dropset": s.is_dropset,
+                        "had_drops": child_count.get(s.id, 0) > 0,
                         "description": s.description,
                     }
                     for s in ex.sets
