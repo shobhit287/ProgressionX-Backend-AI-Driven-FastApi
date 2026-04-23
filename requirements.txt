@@ -14,6 +14,8 @@ groq==0.25.0
 greenlet==3.3.2
 httpx==0.28.1
 slowapi==0.1.9
+google-auth==2.35.0
+requests==2.32.3
 reportlab==4.2.5
 matplotlib==3.9.2
 uuid-utils==0.9.0

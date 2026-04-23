@@ -35,3 +35,15 @@ async def require_superadmin(user=Depends(current_user)):
         raise BaseDomainError("Forbidden", 403)
     return user
 
+
+async def require_complete_profile(user=Depends(current_user)):
+    """Gate for endpoints that depend on the user's full fitness profile
+    (AI prompts, analytics, export reports). Stub Google signups whose
+    profile hasn't been filled yet are blocked server-side so they can't
+    bypass the frontend's AuthGuard via direct API calls."""
+    if not user.is_profile_complete:
+        raise BaseDomainError(
+            "Please complete your profile before using this feature.", 403
+        )
+    return user
+

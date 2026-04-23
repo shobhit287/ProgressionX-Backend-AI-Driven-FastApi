@@ -31,7 +31,66 @@ class UserService:
     async def update(self, id: UUID, payload: dict):
         user = await self.user_repository.get_by_id(id)
         updated_user = await self.user_repository.update(user, payload)
+        # Auto-mark the profile complete the moment all required fitness
+        # fields land on the record. Avoids a separate "finish profile"
+        # endpoint and works whether the user edits from the CompleteProfile
+        # page or the regular profile page.
+        if (
+            not updated_user.is_profile_complete
+            and updated_user.age is not None
+            and updated_user.weight is not None
+            and updated_user.height is not None
+            and updated_user.goal is not None
+            and updated_user.gender is not None
+        ):
+            await self.user_repository.update(
+                updated_user, {"is_profile_complete": True}
+            )
         return updated_user
+
+    async def upsert_google_user(
+        self,
+        *,
+        google_sub: str,
+        email: str,
+        given_name: str,
+        family_name: str,
+    ):
+        """Login-or-create for Google OAuth.
+
+        Match order:
+          1. google_id == sub  → direct login.
+          2. email == email    → link (set google_id on the existing row)
+                                 so future Google logins hit branch 1.
+          3. Neither           → create stub (is_profile_complete=false).
+        """
+        # Branch 1 — already linked.
+        by_sub = await self.user_repository.search({"google_id": google_sub})
+        if by_sub:
+            return by_sub[0]
+
+        # Branch 2 — same email used for password signup previously. Safe
+        # to link because the caller already verified email_verified=true.
+        existing = await self.get_by_email(email)
+        if existing:
+            if not existing.google_id:
+                await self.user_repository.update(
+                    existing, {"google_id": google_sub}
+                )
+            return existing
+
+        # Branch 3 — brand-new user. Stub row with enough to satisfy NOT
+        # NULL columns (first_name, last_name, email); fitness fields stay
+        # NULL and is_profile_complete=false forces the completion flow.
+        stub = {
+            "email": email,
+            "first_name": given_name or email.split("@", 1)[0][:100],
+            "last_name": family_name or "",
+            "google_id": google_sub,
+            "hashed_password": None,
+            "is_profile_complete": False,
+        }
+        return await self.user_repository.create(stub)
     
     async def change_password(self, id: UUID, old_password: str, new_password: str):
         user = await self.user_repository.get_by_id(id)

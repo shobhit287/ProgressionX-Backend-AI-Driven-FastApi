@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.depends import get_db, current_user
+from core.depends import get_db, require_complete_profile
 from core.rate_limiter import limiter
 from core.groq_client import set_llm_context
 from .ai_schema import (
@@ -36,7 +36,7 @@ router = APIRouter(prefix="/ai", tags=["AI Analysis"])
 async def analyze_sessions(
     request: Request,
     data: AnalyzeSessionsRequest,
-    user=Depends(current_user),
+    user=Depends(require_complete_profile),
     db: AsyncSession = Depends(get_db),
 ):
     set_llm_context(user_id=str(user.id), endpoint="analyze-sessions")
@@ -60,7 +60,7 @@ async def analyze_sessions(
 async def analyze_exercise(
     request: Request,
     data: AnalyzeExerciseRequest,
-    user=Depends(current_user),
+    user=Depends(require_complete_profile),
     db: AsyncSession = Depends(get_db),
 ):
     set_llm_context(user_id=str(user.id), endpoint="analyze-exercise")
@@ -84,7 +84,7 @@ async def analyze_exercise(
 async def analyze_weight(
     request: Request,
     data: AnalyzeWeightRequest,
-    user=Depends(current_user),
+    user=Depends(require_complete_profile),
     db: AsyncSession = Depends(get_db),
 ):
     set_llm_context(user_id=str(user.id), endpoint="analyze-weight")
@@ -107,7 +107,7 @@ async def analyze_weight(
 async def analyze_split(
     request: Request,
     data: AnalyzeSplitRequest,
-    user=Depends(current_user),
+    user=Depends(require_complete_profile),
     db: AsyncSession = Depends(get_db),
 ):
     set_llm_context(user_id=str(user.id), endpoint="analyze-split")
@@ -128,7 +128,7 @@ async def analyze_split(
 async def fitness_chat(
     request: Request,
     data: FitnessChatRequest,
-    user=Depends(current_user),
+    user=Depends(require_complete_profile),
     db: AsyncSession = Depends(get_db),
 ):
     set_llm_context(user_id=str(user.id), endpoint="fitness-chat")
@@ -150,7 +150,7 @@ async def fitness_chat(
 async def session_coach(
     request: Request,
     data: SessionCoachRequest,
-    user=Depends(current_user),
+    user=Depends(require_complete_profile),
     db: AsyncSession = Depends(get_db),
 ):
     set_llm_context(user_id=str(user.id), endpoint="session-coach")
@@ -172,7 +172,7 @@ async def session_coach(
 async def generate_weekly_schedule(
     request: Request,
     data: GenerateWeeklyScheduleRequest,
-    user=Depends(current_user),
+    user=Depends(require_complete_profile),
     db: AsyncSession = Depends(get_db),
 ):
     set_llm_context(user_id=str(user.id), endpoint="generate-weekly-schedule")
@@ -189,7 +189,7 @@ async def generate_weekly_schedule(
 async def customize_split(
     request: Request,
     data: GenerateSplitRequest,
-    user=Depends(current_user),
+    user=Depends(require_complete_profile),
     db: AsyncSession = Depends(get_db),
 ):
     set_llm_context(user_id=str(user.id), endpoint="customize-split")
@@ -208,7 +208,7 @@ async def customize_split(
 async def session_plan(
     request: Request,
     data: SessionPlanRequest,
-    user=Depends(current_user),
+    user=Depends(require_complete_profile),
     db: AsyncSession = Depends(get_db),
 ):
     set_llm_context(user_id=str(user.id), endpoint="session-plan")

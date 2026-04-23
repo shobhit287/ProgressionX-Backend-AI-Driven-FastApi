@@ -1,7 +1,7 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.depends import current_user, get_db
+from core.depends import get_db, require_complete_profile
 from core.rate_limiter import limiter
 
 from .export_schema import ExportFiltersResponse, ExportPdfRequest, ExportPdfResponse
@@ -16,7 +16,7 @@ router = APIRouter(prefix="/export", tags=["Export"])
     response_model=ExportFiltersResponse,
 )
 async def get_export_filters(
-    user=Depends(current_user),
+    user=Depends(require_complete_profile),
     db: AsyncSession = Depends(get_db),
 ):
     service = ExportService(db)
@@ -33,7 +33,7 @@ async def export_pdf(
     request: Request,
     data: ExportPdfRequest,
     background_tasks: BackgroundTasks,
-    user=Depends(current_user),
+    user=Depends(require_complete_profile),
 ):
     background_tasks.add_task(
         ExportService.run_export_job,

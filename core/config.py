@@ -7,6 +7,10 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
     PORTAL_URL: str
     ENV: str = "development"
+    # OAuth — Google sign-in. Client ID is public; no client secret needed
+    # because we use the ID token flow (verified server-side against Google's
+    # public keys). Empty default so the rest of the app still boots if unset.
+    GOOGLE_CLIENT_ID: str = ""
 
     # Superadmin seed
     SUPERADMIN_EMAIL: str = ""

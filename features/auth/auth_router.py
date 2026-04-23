@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.depends import get_db
 from core.rate_limiter import limiter
-from .auth_schema import LoginSchema, TokenSchema, RefreshSchema
+from .auth_schema import LoginSchema, TokenSchema, RefreshSchema, GoogleLoginSchema
 from .auth_service import AuthService
 
 router = APIRouter(prefix="/auth",  tags=["Auth"])
@@ -18,3 +18,16 @@ async def login(request: Request, data: LoginSchema,  db: AsyncSession = Depends
 async def refresh(data: RefreshSchema, db: AsyncSession = Depends(get_db)):
     auth_service = AuthService(db)
     return await auth_service.refresh(data.refresh_token)
+
+
+@router.post("/google", status_code=status.HTTP_200_OK, response_model=TokenSchema)
+@limiter.limit("10/minute")
+async def google_login(
+    request: Request,
+    data: GoogleLoginSchema,
+    db: AsyncSession = Depends(get_db),
+):
+    auth_service = AuthService(db)
+    result = await auth_service.login_with_google(data.credential)
+    await db.commit()
+    return result

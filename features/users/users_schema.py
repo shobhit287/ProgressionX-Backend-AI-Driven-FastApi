@@ -98,12 +98,14 @@ class ResponseUserSchema(BaseModel):
     first_name: str = Field(..., alias="firstName")
     last_name: str = Field(..., alias="lastName")
 
-    age: int = Field(...)
-    weight: float = Field(...)
-    height: int = Field(...)
+    # Optional: stub users created via Google sign-in have these NULL until
+    # they finish the /profile/complete flow.
+    age: Optional[int] = Field(None)
+    weight: Optional[float] = Field(None)
+    height: Optional[int] = Field(None)
 
-    goal: GoalEnum = Field(...)
-    gender: GenderEnum = Field(...)
+    goal: Optional[GoalEnum] = Field(None)
+    gender: Optional[GenderEnum] = Field(None)
     training_type: TrainingTypeEnum = Field(..., alias="trainingType")
     experience_level: ExperienceLevelEnum = Field(..., alias="experienceLevel")
     activity_level: Optional[str] = Field(None, alias="activityLevel")
@@ -113,6 +115,7 @@ class ResponseUserSchema(BaseModel):
     mobile_number: Optional[str] = Field(None, alias="mobileNumber")
     email: EmailStr = Field(...)
     is_active: bool = Field(..., alias="isActive")
+    is_profile_complete: bool = Field(True, alias="isProfileComplete")
 
     created_at: datetime = Field(..., alias="createdAt")
     updated_at: datetime = Field(..., alias="updatedAt")
