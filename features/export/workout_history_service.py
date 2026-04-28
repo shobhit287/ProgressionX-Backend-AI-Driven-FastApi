@@ -507,8 +507,9 @@ class WorkoutHistoryExportService:
         else:
             story.append(
                 Paragraph(
-                    "Every set logged. Drop sets are indented and prefixed "
-                    "with ↳. Warm-ups are tagged.",
+                    "Every set logged. Drop sets are numbered as "
+                    "&lt;parent&gt;.&lt;n&gt; (e.g. 3.1, 3.2) and tinted "
+                    "purple. Warm-ups are tagged.",
                     muted,
                 )
             )
@@ -572,13 +573,22 @@ class WorkoutHistoryExportService:
                     set_rows = [
                         ["Set", "Weight (kg)", "Reps", "RIR", "Type", "Notes"]
                     ]
+                    # Re-number sets so drops display as <parent>.<n> (e.g.
+                    # 3.1, 3.2, 3.3) and regular sets keep a clean sequential
+                    # count (1, 2, 3, 4 …) instead of their raw DB
+                    # set_number which would jump over drop rows.
+                    parent_num = 0
+                    drop_idx = 0
                     for s in sets:
                         is_drop = bool(s.get("is_drop"))
-                        num_cell = (
-                            f"↳ {s['set_number']}"
-                            if is_drop
-                            else str(s["set_number"])
-                        )
+                        if is_drop:
+                            drop_idx += 1
+                            num_cell = f"{parent_num}.{drop_idx}"
+                        else:
+                            parent_num += 1
+                            drop_idx = 0
+                            num_cell = str(parent_num)
+
                         rir_cell = (
                             str(s["reps_in_reserve"])
                             if s["reps_in_reserve"] is not None
