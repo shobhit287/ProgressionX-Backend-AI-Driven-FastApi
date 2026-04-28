@@ -1,6 +1,5 @@
 import io
 import logging
-from collections import defaultdict
 from datetime import date, datetime
 from typing import Optional
 from uuid import UUID
@@ -305,117 +304,6 @@ class ExportService:
             )
         return points
 
-    async def _fetch_session_breakdown(
-        self,
-        user_id: UUID,
-        start_date: date,
-        end_date: date,
-        split_id: Optional[UUID],
-    ) -> list[dict]:
-        """Per-session detail with all exercises and all sets. Used for the
-        "Detailed Session Breakdown" section of the PDF — every weight, rep,
-        RIR, dropset, warmup, and note is included so the report mirrors what
-        the user sees in the SessionHistory UI."""
-        session_query = select(WorkoutSession).where(
-            WorkoutSession.user_id == user_id,
-            WorkoutSession.status == SessionStatusEnum.COMPLETED,
-            cast(WorkoutSession.started_at, Date) >= start_date,
-            cast(WorkoutSession.started_at, Date) <= end_date,
-        )
-        if split_id:
-            session_query = session_query.where(WorkoutSession.split_id == split_id)
-        session_query = session_query.order_by(WorkoutSession.started_at.asc())
-
-        sessions_rows = (await self.db.execute(session_query)).scalars().all()
-        if not sessions_rows:
-            return []
-
-        session_ids = [s.id for s in sessions_rows]
-
-        # Map split_id -> (split_name, day) so the detailed section can show
-        # which split this session belonged to.
-        split_ids = {s.split_id for s in sessions_rows if s.split_id}
-        split_meta: dict = {}
-        if split_ids:
-            sp_rows = (
-                await self.db.execute(
-                    select(WorkoutSplit).where(WorkoutSplit.id.in_(split_ids))
-                )
-            ).scalars().all()
-            split_meta = {
-                sp.id: {
-                    "name": sp.name,
-                    "day": sp.day.value if hasattr(sp.day, "value") else str(sp.day),
-                }
-                for sp in sp_rows
-            }
-
-        ex_rows = (
-            await self.db.execute(
-                select(SessionExercise)
-                .where(SessionExercise.session_id.in_(session_ids))
-                .order_by(
-                    SessionExercise.session_id,
-                    SessionExercise.display_order.asc(),
-                )
-            )
-        ).scalars().all()
-        ex_ids = [e.id for e in ex_rows]
-
-        sets_rows = []
-        if ex_ids:
-            sets_rows = (
-                await self.db.execute(
-                    select(ExerciseSet)
-                    .where(ExerciseSet.session_exercise_id.in_(ex_ids))
-                    .order_by(
-                        ExerciseSet.session_exercise_id,
-                        ExerciseSet.set_number.asc(),
-                    )
-                )
-            ).scalars().all()
-
-        sets_by_ex = defaultdict(list)
-        for s in sets_rows:
-            sets_by_ex[s.session_exercise_id].append({
-                "set_number": s.set_number,
-                "weight_kg": float(s.weight_kg),
-                "reps": s.reps,
-                "reps_in_reserve": s.reps_in_reserve,
-                "is_warmup": bool(s.is_warmup),
-                "is_dropset": bool(s.is_dropset),
-                "is_drop": s.parent_set_id is not None,
-                "description": s.description,
-            })
-
-        exercises_by_session = defaultdict(list)
-        for e in ex_rows:
-            exercises_by_session[e.session_id].append({
-                "name": e.exercise_name,
-                "exercise_type": (
-                    e.exercise_type.value
-                    if hasattr(e.exercise_type, "value")
-                    else str(e.exercise_type)
-                ),
-                "superset_group": e.superset_group,
-                "display_order": e.display_order,
-                "sets": sets_by_ex.get(e.id, []),
-            })
-
-        out = []
-        for s in sessions_rows:
-            sp = split_meta.get(s.split_id) if s.split_id else None
-            out.append({
-                "started_at": s.started_at,
-                "date": s.started_at.date() if s.started_at else None,
-                "duration_seconds": s.duration_seconds or 0,
-                "notes": getattr(s, "notes", None),
-                "split_name": sp["name"] if sp else None,
-                "split_day": sp["day"] if sp else None,
-                "exercises": exercises_by_session.get(s.id, []),
-            })
-        return out
-
     @staticmethod
     def _aggregate_metrics(
         sessions: list[dict], breakdown: list[dict]
@@ -604,9 +492,6 @@ class ExportService:
         breakdown = await self._fetch_exercise_breakdown(
             user_id, start_date, end_date, split_id
         )
-        detailed_sessions = await self._fetch_session_breakdown(
-            user_id, start_date, end_date, split_id
-        )
 
         exercise_progression = []
         if exercise_name:
@@ -644,7 +529,6 @@ class ExportService:
             exercise_progression=exercise_progression,
             weight_summary=weight_summary,
             splits_overview=splits_overview,
-            detailed_sessions=detailed_sessions,
             ai=ai,
         )
 
@@ -712,7 +596,6 @@ class ExportService:
         exercise_progression: list[dict],
         weight_summary: Optional[dict],
         splits_overview: Optional[list[dict]],
-        detailed_sessions: list[dict],
         ai: dict,
     ) -> bytes:
         import matplotlib
@@ -884,168 +767,7 @@ class ExportService:
             )
             story.append(br_tbl)
 
-        # ── Detailed Session Breakdown ──────────────────────────────────
-        # Per-session, per-exercise, per-set log: every weight, rep, RIR,
-        # warmup, and dropset. This is the primary content the user asked
-        # for — same level of detail they see in the SessionHistory UI.
-        if detailed_sessions:
-            story.append(PageBreak())
-            story.append(Paragraph("Detailed Session Breakdown", h1))
-            story.append(
-                Paragraph(
-                    "Every set logged in this range — weights, reps, RIR, "
-                    "warm-ups, drop sets, and notes. Drop sets are indented "
-                    "and prefixed with ↳.",
-                    muted,
-                )
-            )
-
-            for sess in detailed_sessions:
-                story.append(Spacer(1, 10))
-
-                # Session header
-                date_str = _fmt_date(sess["date"]) if sess.get("date") else ""
-                time_str = (
-                    sess["started_at"].strftime("%H:%M")
-                    if sess.get("started_at")
-                    else ""
-                )
-                dur = sess.get("duration_seconds") or 0
-                dur_str = f" · {dur // 60} min" if dur else ""
-                split_label = ""
-                if sess.get("split_day") and sess.get("split_name"):
-                    split_label = (
-                        f" · {str(sess['split_day']).capitalize()} — "
-                        f"{sess['split_name']}"
-                    )
-                story.append(
-                    Paragraph(
-                        f"<b>{date_str}</b> {time_str}{dur_str}{split_label}",
-                        h2,
-                    )
-                )
-                if sess.get("notes"):
-                    story.append(Paragraph(f"<i>{sess['notes']}</i>", muted))
-
-                if not sess.get("exercises"):
-                    story.append(Paragraph("No exercises logged.", muted))
-                    continue
-
-                for ex in sess["exercises"]:
-                    type_label = ""
-                    et = ex.get("exercise_type")
-                    if et and et != "standard":
-                        type_label = (
-                            f" <font color='#6366f1'>"
-                            f"[{et.replace('_', ' ').upper()}]</font>"
-                        )
-                    superset_label = ""
-                    if ex.get("superset_group"):
-                        superset_label = (
-                            f" <font color='#64748b'>"
-                            f"(superset {ex['superset_group']})</font>"
-                        )
-                    story.append(
-                        Paragraph(
-                            f"<b>{ex['name']}</b>{type_label}{superset_label}",
-                            body,
-                        )
-                    )
-
-                    sets = ex.get("sets") or []
-                    if not sets:
-                        story.append(
-                            Paragraph(
-                                "&nbsp;&nbsp;<i>No sets logged.</i>", muted
-                            )
-                        )
-                        continue
-
-                    set_rows = [
-                        ["Set", "Weight (kg)", "Reps", "RIR", "Type", "Notes"]
-                    ]
-                    for s in sets:
-                        is_drop = bool(s.get("is_drop"))
-                        num_cell = (
-                            f"↳ {s['set_number']}" if is_drop
-                            else str(s["set_number"])
-                        )
-                        weight_cell = f"{s['weight_kg']:g}"
-                        rir_cell = (
-                            str(s["reps_in_reserve"])
-                            if s["reps_in_reserve"] is not None
-                            else "—"
-                        )
-                        tags = []
-                        if s.get("is_warmup"):
-                            tags.append("warmup")
-                        if is_drop:
-                            tags.append("drop")
-                        elif s.get("is_dropset"):
-                            tags.append("top")
-                        type_cell = ", ".join(tags) if tags else "—"
-                        note_cell = (s.get("description") or "")[:80]
-                        set_rows.append(
-                            [
-                                num_cell,
-                                weight_cell,
-                                str(s["reps"]),
-                                rir_cell,
-                                type_cell,
-                                note_cell,
-                            ]
-                        )
-
-                    set_tbl = Table(
-                        set_rows,
-                        colWidths=[
-                            1.6 * cm,
-                            2.5 * cm,
-                            1.6 * cm,
-                            1.5 * cm,
-                            2.4 * cm,
-                            7.2 * cm,
-                        ],
-                    )
-
-                    # Style: header row dark, alternating zebra stripes,
-                    # drop-set rows tinted purple to match the on-screen UX.
-                    style_cmds = [
-                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#475569")),
-                        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                        ("FONTSIZE", (0, 0), (-1, -1), 8.5),
-                        ("ALIGN", (1, 0), (3, -1), "RIGHT"),
-                        ("ALIGN", (0, 0), (0, -1), "CENTER"),
-                        ("ALIGN", (4, 0), (4, -1), "LEFT"),
-                        ("BOX", (0, 0), (-1, -1), 0.4, colors.HexColor("#cbd5e1")),
-                        ("INNERGRID", (0, 0), (-1, -1), 0.2, colors.HexColor("#e2e8f0")),
-                        (
-                            "ROWBACKGROUNDS",
-                            (0, 1),
-                            (-1, -1),
-                            [colors.white, colors.HexColor("#f8fafc")],
-                        ),
-                        ("LEFTPADDING", (0, 0), (-1, -1), 4),
-                        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-                        ("TOPPADDING", (0, 0), (-1, -1), 3),
-                        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-                    ]
-                    for i, s in enumerate(sets, start=1):
-                        if s.get("is_drop"):
-                            style_cmds.append(
-                                (
-                                    "BACKGROUND",
-                                    (0, i),
-                                    (-1, i),
-                                    colors.HexColor("#eef2ff"),
-                                )
-                            )
-                    set_tbl.setStyle(TableStyle(style_cmds))
-                    story.append(set_tbl)
-                    story.append(Spacer(1, 5))
-
-        # ── AI Summary (moved to the end so users see raw data first) ───
+        # AI Summary
         story.append(PageBreak())
         story.append(Paragraph("AI Summary", h1))
         story.append(Paragraph(ai.get("summary") or "—", body))
@@ -1130,6 +852,45 @@ class ExportService:
                         muted,
                     )
                 )
+
+        # Session log
+        if sessions:
+            story.append(Paragraph("Session Log", h2))
+            log_rows = [["Date", "Sets", "Reps", "Volume (kg)", "Avg RIR", "Dur (min)"]]
+            for s in sessions:
+                log_rows.append(
+                    [
+                        str(s["date"]),
+                        str(s["total_sets"]),
+                        str(s["total_reps"]),
+                        f"{s['total_volume']:.0f}",
+                        f"{s['avg_rir']}" if s["avg_rir"] is not None else "—",
+                        f"{(s['duration_seconds'] or 0) / 60:.0f}",
+                    ]
+                )
+            log_tbl = Table(
+                log_rows,
+                colWidths=[3.2 * cm, 2 * cm, 2 * cm, 3.2 * cm, 2.6 * cm, 2.6 * cm],
+            )
+            log_tbl.setStyle(
+                TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#334155")),
+                        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                        ("FONTSIZE", (0, 0), (-1, -1), 9),
+                        ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+                        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+                        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#e2e8f0")),
+                        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                        ("TOPPADDING", (0, 0), (-1, -1), 4),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                    ]
+                )
+            )
+            story.append(log_tbl)
 
         doc.build(story)
         return buf.getvalue()
