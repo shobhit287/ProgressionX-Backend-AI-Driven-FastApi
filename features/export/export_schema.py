@@ -28,3 +28,21 @@ class ExportPdfRequest(BaseModel):
         if self.end_date < self.start_date:
             raise ValueError("endDate must be on or after startDate")
         return self
+
+
+class ExportWorkoutHistoryRequest(BaseModel):
+    """Workout-history-only export. All three fields are required —
+    user must pick a specific split (no all-splits option) and an
+    explicit start/end window."""
+
+    split_id: UUID = Field(..., alias="splitId")
+    start_date: date = Field(..., alias="startDate")
+    end_date: date = Field(..., alias="endDate")
+
+    model_config = {"populate_by_name": True}
+
+    @model_validator(mode="after")
+    def _validate_range(self):
+        if self.end_date < self.start_date:
+            raise ValueError("endDate must be on or after startDate")
+        return self
