@@ -140,6 +140,53 @@ class WorkoutSessionService:
             "duration_seconds": duration,
         })
 
+    async def reopen_session(self, session_id: UUID, user_id: UUID):
+        """Restore a same-day session to IN_PROGRESS after an accidental
+        abandon / complete. Guard rails:
+          - Only same-day sessions can be reopened (yesterday's logs stay
+            closed; reopening them would conflict with the daily-session
+            invariant).
+          - No other in-progress session may exist (one active at a time).
+        """
+        session = await self.repository.get_by_id(session_id, user_id)
+        if not session:
+            raise BaseDomainError("Session not found", 404)
+
+        # Idempotent: already active → just return it.
+        if session.status == SessionStatusEnum.IN_PROGRESS:
+            return session
+
+        if session.status not in (
+            SessionStatusEnum.COMPLETED,
+            SessionStatusEnum.ABANDONED,
+        ):
+            raise BaseDomainError("Session cannot be reopened", 400)
+
+        started = (
+            session.started_at.replace(tzinfo=timezone.utc)
+            if session.started_at and session.started_at.tzinfo is None
+            else session.started_at
+        )
+        today = datetime.now(timezone.utc).date()
+        if not started or started.date() != today:
+            raise BaseDomainError(
+                "Only today's session can be reopened", 400
+            )
+
+        existing_active = await self.repository.get_active(user_id)
+        if existing_active and existing_active.id != session.id:
+            raise BaseDomainError(
+                "Another session is already in progress. Complete or "
+                "abandon it before reopening this one.",
+                400,
+            )
+
+        return await self.repository.update(session, {
+            "status": SessionStatusEnum.IN_PROGRESS,
+            "completed_at": None,
+            "duration_seconds": None,
+        })
+
     async def delete_session(self, session_id: UUID, user_id: UUID):
         session = await self.repository.get_by_id(session_id, user_id)
         await self.repository.delete(session)

@@ -121,31 +121,54 @@ class WorkoutHistoryExportService:
     async def _fetch_sessions(
         self,
         user_id: UUID,
-        split_id: UUID,
+        split_id: Optional[UUID],
         start_date: date,
         end_date: date,
     ) -> list[dict]:
         """Per-session detail: every exercise with every set. Three batched
         queries (sessions → session_exercises → exercise_sets), grouped in
         Python — keeps the request count constant regardless of session
-        count."""
-        sess_rows = (
-            await self.db.execute(
-                select(WorkoutSession)
-                .where(
-                    WorkoutSession.user_id == user_id,
-                    WorkoutSession.split_id == split_id,
-                    WorkoutSession.status == SessionStatusEnum.COMPLETED,
-                    cast(WorkoutSession.started_at, Date) >= start_date,
-                    cast(WorkoutSession.started_at, Date) <= end_date,
-                )
-                .order_by(WorkoutSession.started_at.asc())
-            )
-        ).scalars().all()
+        count.
+
+        When `split_id` is None, sessions across every split in the range
+        are returned and each session is annotated with its split label so
+        the PDF can group/identify them."""
+        sess_query = select(WorkoutSession).where(
+            WorkoutSession.user_id == user_id,
+            WorkoutSession.status == SessionStatusEnum.COMPLETED,
+            cast(WorkoutSession.started_at, Date) >= start_date,
+            cast(WorkoutSession.started_at, Date) <= end_date,
+        )
+        if split_id is not None:
+            sess_query = sess_query.where(WorkoutSession.split_id == split_id)
+        sess_query = sess_query.order_by(WorkoutSession.started_at.asc())
+
+        sess_rows = (await self.db.execute(sess_query)).scalars().all()
         if not sess_rows:
             return []
 
         session_ids = [s.id for s in sess_rows]
+
+        # When exporting across all splits, look up each session's split
+        # name/day so the PDF can label it. Single batched query.
+        split_meta: dict = {}
+        if split_id is None:
+            split_ids_in_use = {s.split_id for s in sess_rows if s.split_id}
+            if split_ids_in_use:
+                sp_rows = (
+                    await self.db.execute(
+                        select(WorkoutSplit).where(
+                            WorkoutSplit.id.in_(split_ids_in_use)
+                        )
+                    )
+                ).scalars().all()
+                split_meta = {
+                    sp.id: (
+                        sp.day.value if hasattr(sp.day, "value") else str(sp.day),
+                        sp.name,
+                    )
+                    for sp in sp_rows
+                }
 
         ex_rows = (
             await self.db.execute(
@@ -214,11 +237,17 @@ class WorkoutHistoryExportService:
                 for st in e["sets"]
                 if not st.get("is_warmup")
             )
+            # Annotate split label when running across all splits.
+            split_day, split_name_for_session = (None, None)
+            if split_id is None and s.split_id in split_meta:
+                split_day, split_name_for_session = split_meta[s.split_id]
             out.append({
                 "started_at": s.started_at,
                 "date": s.started_at.date() if s.started_at else None,
                 "duration_seconds": s.duration_seconds or 0,
                 "notes": getattr(s, "notes", None),
+                "split_day": split_day,
+                "split_name": split_name_for_session,
                 "exercises": exercises,
                 "total_sets": total_sets,
                 "total_reps": total_reps,
@@ -271,21 +300,27 @@ class WorkoutHistoryExportService:
     async def generate_pdf(
         self,
         user_id: UUID,
-        split_id: UUID,
+        split_id: Optional[UUID],
         start_date: date,
         end_date: date,
     ) -> tuple[bytes, str]:
-        """Returns (pdf_bytes, split_label_for_email)."""
-        user = await self._get_user(user_id)
-        split = await self._get_split(split_id, user_id)
-        if split is None:
-            raise ValueError("Split not found or does not belong to user.")
+        """Returns (pdf_bytes, split_label_for_email).
 
-        split_label = (
-            f"{split.name} ({split.day.value.capitalize()})"
-            if hasattr(split.day, "value")
-            else f"{split.name} ({str(split.day).capitalize()})"
-        )
+        `split_id` is optional — when None, the report covers every split
+        the user trained on in the date range."""
+        user = await self._get_user(user_id)
+
+        if split_id is not None:
+            split = await self._get_split(split_id, user_id)
+            if split is None:
+                raise ValueError("Split not found or does not belong to user.")
+            split_label = (
+                f"{split.name} ({split.day.value.capitalize()})"
+                if hasattr(split.day, "value")
+                else f"{split.name} ({str(split.day).capitalize()})"
+            )
+        else:
+            split_label = "All splits"
 
         sessions = await self._fetch_sessions(
             user_id, split_id, start_date, end_date
@@ -301,6 +336,7 @@ class WorkoutHistoryExportService:
             end_date=end_date,
             sessions=sessions,
             ai=ai,
+            include_split_per_session=split_id is None,
         )
         return pdf, split_label
 
@@ -308,7 +344,7 @@ class WorkoutHistoryExportService:
     async def run_export_job(
         cls,
         user_id: UUID,
-        split_id: UUID,
+        split_id: Optional[UUID],
         start_date: date,
         end_date: date,
     ) -> None:
@@ -373,6 +409,7 @@ class WorkoutHistoryExportService:
         end_date: date,
         sessions: list[dict],
         ai: dict,
+        include_split_per_session: bool = False,
     ) -> bytes:
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import A4
@@ -436,6 +473,24 @@ class WorkoutHistoryExportService:
             textColor=colors.HexColor("#64748b"),
             fontSize=9,
         )
+        # Notes inside the per-set table need a Paragraph (not a raw string)
+        # so long text wraps within the column instead of overflowing.
+        note_style = ParagraphStyle(
+            "set_note",
+            parent=body,
+            fontSize=8.5,
+            leading=10,
+            textColor=colors.HexColor("#0f172a"),
+        )
+
+        def _escape_xml(s: str) -> str:
+            """Paragraph parses a tiny XML subset, so user-typed `<`, `>`,
+            `&` would otherwise break rendering."""
+            return (
+                s.replace("&", "&amp;")
+                 .replace("<", "&lt;")
+                 .replace(">", "&gt;")
+            )
 
         story = []
 
@@ -525,6 +580,18 @@ class WorkoutHistoryExportService:
                 meta_bits = [date_str, time_str]
                 if dur_min:
                     meta_bits.append(f"{dur_min} min")
+                # When the report covers every split, include each session's
+                # own split label in its header so the user can tell which
+                # workout day each block belongs to.
+                if (
+                    include_split_per_session
+                    and sess.get("split_day")
+                    and sess.get("split_name")
+                ):
+                    meta_bits.append(
+                        f"{str(sess['split_day']).capitalize()} — "
+                        f"{sess['split_name']}"
+                    )
                 meta_bits.append(
                     f"{sess.get('total_sets', 0)} sets · "
                     f"{sess.get('total_volume', 0):.0f} kg"
@@ -602,7 +669,14 @@ class WorkoutHistoryExportService:
                         elif s.get("is_dropset"):
                             tags.append("top")
                         type_cell = ", ".join(tags) if tags else "—"
-                        note_cell = (s.get("description") or "")[:80]
+                        # Wrap notes in a Paragraph so long descriptions wrap
+                        # within the column. Plain strings overflow.
+                        note_text = (s.get("description") or "").strip()
+                        note_cell = (
+                            Paragraph(_escape_xml(note_text), note_style)
+                            if note_text
+                            else "—"
+                        )
                         set_rows.append(
                             [
                                 num_cell,
@@ -633,6 +707,9 @@ class WorkoutHistoryExportService:
                         ("ALIGN", (1, 0), (3, -1), "RIGHT"),
                         ("ALIGN", (0, 0), (0, -1), "CENTER"),
                         ("ALIGN", (4, 0), (4, -1), "LEFT"),
+                        # Top-align all cells so single-line columns line up
+                        # cleanly when the Notes paragraph wraps to 2+ lines.
+                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
                         ("BOX", (0, 0), (-1, -1), 0.4, colors.HexColor("#cbd5e1")),
                         ("INNERGRID", (0, 0), (-1, -1), 0.2, colors.HexColor("#e2e8f0")),
                         (

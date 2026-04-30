@@ -77,7 +77,7 @@ async def export_workout_history(
     background_tasks.add_task(
         WorkoutHistoryExportService.run_export_job,
         user.id,
-        data.split_id,
+        data.split_id,  # may be None → export across all splits
         data.start_date,
         data.end_date,
     )

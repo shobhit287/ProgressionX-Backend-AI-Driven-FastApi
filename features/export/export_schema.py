@@ -31,11 +31,11 @@ class ExportPdfRequest(BaseModel):
 
 
 class ExportWorkoutHistoryRequest(BaseModel):
-    """Workout-history-only export. All three fields are required —
-    user must pick a specific split (no all-splits option) and an
-    explicit start/end window."""
+    """Workout-history-only export. Date range is mandatory; splitId is
+    optional — omit / send null to export every session across all splits
+    in the range."""
 
-    split_id: UUID = Field(..., alias="splitId")
+    split_id: Optional[UUID] = Field(None, alias="splitId")
     start_date: date = Field(..., alias="startDate")
     end_date: date = Field(..., alias="endDate")
 

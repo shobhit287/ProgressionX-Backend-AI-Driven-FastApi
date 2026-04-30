@@ -150,6 +150,26 @@ async def abandon_session(
     return session
 
 
+@router.patch(
+    "/{session_id}/reopen",
+    status_code=status.HTTP_200_OK,
+    response_model=ResponseSessionSchema,
+)
+async def reopen_session(
+    session_id: UUID,
+    user=Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Restore a same-day session to in-progress after an accidental
+    abandon / complete. Validates the session belongs to the user, was
+    started today, and no other session is already active."""
+    service = WorkoutSessionService(db)
+    session = await service.reopen_session(session_id, user.id)
+    await db.commit()
+    await db.refresh(session)
+    return session
+
+
 @router.delete(
     "/{session_id}",
     status_code=status.HTTP_204_NO_CONTENT,
