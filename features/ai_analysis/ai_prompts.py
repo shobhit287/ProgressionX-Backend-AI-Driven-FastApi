@@ -289,10 +289,14 @@ SESSION_COACH_SYSTEM_INSTRUCTION = (
     "Consider their recent progression, fatigue indicators (RIR trends), and volume. "
     "IMPORTANT: When the user asks about 'next weight', 'next set', or 'this exercise' "
     "WITHOUT specifying an exercise name, figure out which exercise they mean by: "
-    "1) Check if any exercise has fewer completed sets than the target sets in the split plan — "
+    "1) Check if any exercise has fewer completed WORKING sets than the target sets in the split plan — "
     "that exercise likely has sets remaining, so the user is asking about it. "
-    "2) If all sets for the current exercise are done, they are likely asking about the NEXT exercise in the split order. "
-    "3) Use the split plan order to determine what comes next. "
+    "2) Sets tagged [WARMUP] do NOT count toward the target. Only sets tagged [WORKING] count. "
+    "Targets in the split plan refer to working sets only. "
+    "Example: target = 3 working sets and the user has logged 2 [WARMUP] + 1 [WORKING] = 1/3 done, "
+    "so the next set is still on the SAME exercise, NOT the next one. "
+    "3) If all WORKING sets for the current exercise are done, they are likely asking about the NEXT exercise in the split order. "
+    "4) Use the split plan order to determine what comes next. "
     "If they ask about weight selection, look at their recent performance on that exercise "
     "and give a specific number recommendation with reasoning. "
     "IMPORTANT: Pay attention to set notes (marked with '— note:') — they contain user feedback like "
@@ -375,7 +379,7 @@ def _format_split_exercises(split_exercises: list) -> str:
             ex = entry[2]
             line = (
                 f"  {i}. {_get(ex, 'name') or 'Exercise'} — "
-                f"{_get(ex, 'default_sets', 3)} sets, "
+                f"{_get(ex, 'default_sets', 3)} working sets, "
                 f"{_get(ex, 'rest_seconds', 90)}s rest"
             )
             if _get(ex, "notes"):
@@ -390,7 +394,7 @@ def _format_split_exercises(split_exercises: list) -> str:
             for j, ex in enumerate(items, 1):
                 line = (
                     f"     {chr(ord('a') + j - 1)}. {_get(ex, 'name') or 'Exercise'} — "
-                    f"{_get(ex, 'default_sets', 3)} sets, "
+                    f"{_get(ex, 'default_sets', 3)} working sets, "
                     f"{_get(ex, 'rest_seconds', 90)}s rest"
                 )
                 if _get(ex, "notes"):
@@ -419,12 +423,12 @@ def _format_session_sets(sets: list) -> list[str]:
         # Skip drops here — they're rendered under their parent.
         if s.parent_set_id and s.parent_set_id in by_id:
             continue
-        warmup = " [WARMUP]" if s.is_warmup else ""
+        kind_tag = " [WARMUP — does NOT count toward target]" if s.is_warmup else " [WORKING]"
         rir = f", RIR {s.reps_in_reserve}" if s.reps_in_reserve is not None else ""
         desc = f" — note: {s.description}" if s.description else ""
         dropset_marker = " [TOP OF DROPSET]" if children.get(s.id) else ""
         lines.append(
-            f"  Set {s.set_number}: {s.weight_kg}kg x {s.reps}{rir}{warmup}{dropset_marker}{desc}"
+            f"  Set {s.set_number}: {s.weight_kg}kg x {s.reps}{rir}{kind_tag}{dropset_marker}{desc}"
         )
         for drop in sorted(children.get(s.id, []), key=lambda x: x.set_number):
             d_rir = (
@@ -659,18 +663,23 @@ def build_session_coach_prompt(
         for se in split_exercises:
             target_sets_map[se.name.lower()] = se.default_sets
 
-    # Current session: drops do NOT count toward completion.
-    current_ctx = "=== CURRENT SESSION (in progress) ===\n"
+    # Current session: warmups and drops do NOT count toward completion.
+    current_ctx = (
+        "=== CURRENT SESSION (in progress) ===\n"
+        "NOTE: 'sets done' counts WORKING sets only. Warmups and dropset chains do NOT count toward the target.\n"
+    )
     for ex in session.exercises:
-        completed_sets = len(
-            [s for s in ex.sets if not s.is_warmup and s.parent_set_id is None]
-        )
+        working_sets = [s for s in ex.sets if not s.is_warmup and s.parent_set_id is None]
+        warmup_sets = [s for s in ex.sets if s.is_warmup and s.parent_set_id is None]
+        completed_sets = len(working_sets)
+        warmup_count = len(warmup_sets)
         target = target_sets_map.get(ex.exercise_name.lower(), "?")
-        status = (
-            "DONE"
-            if target != "?" and completed_sets >= target
-            else f"{completed_sets}/{target} sets done"
-        )
+        if target != "?" and completed_sets >= target:
+            status = f"DONE — {completed_sets}/{target} working sets"
+        else:
+            status = f"{completed_sets}/{target} working sets done"
+        if warmup_count > 0:
+            status += f" (+{warmup_count} warmup logged)"
         current_ctx += f"\n{ex.exercise_name} [{status}]:\n"
         if not ex.sets:
             current_ctx += "  (no sets logged yet)\n"
