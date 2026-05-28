@@ -1,7 +1,7 @@
 from datetime import datetime, timezone, date
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, desc
 from sqlalchemy.orm import selectinload
 
 from core.exception_handlers import BaseDomainError
@@ -94,6 +94,27 @@ class WorkoutSessionService:
             if synced:
                 return await self.repository.get_by_id_with_details(session_id, user_id)
         return session
+
+    async def get_previous_completed(self, session_id: UUID, user_id: UUID):
+        """Most recent COMPLETED session for the same split as `session_id`,
+        with exercises and sets eager-loaded. Returns None if there's no
+        prior completed session for that split."""
+        current = await self.repository.get_by_id(session_id, user_id)
+        result = await self.db.execute(
+            select(WorkoutSession)
+            .options(
+                selectinload(WorkoutSession.exercises).selectinload(SessionExercise.sets)
+            )
+            .where(
+                WorkoutSession.user_id == user_id,
+                WorkoutSession.split_id == current.split_id,
+                WorkoutSession.status == SessionStatusEnum.COMPLETED,
+                WorkoutSession.id != session_id,
+            )
+            .order_by(desc(WorkoutSession.started_at))
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
 
     async def get_all(self, user_id: UUID, filters: dict):
         sessions, total = await self.repository.get_all(user_id, filters)

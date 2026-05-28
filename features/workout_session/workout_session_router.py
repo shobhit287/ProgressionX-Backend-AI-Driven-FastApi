@@ -100,6 +100,23 @@ async def get_active_session(
 
 
 @router.get(
+    "/{session_id}/previous-session",
+    status_code=status.HTTP_200_OK,
+    response_model=ResponseSessionDetailSchema | None,
+)
+async def get_previous_session(
+    session_id: UUID,
+    user=Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Returns the most recent completed session for the same split as
+    `session_id`, with full exercises and sets. Powers the 'Last Session'
+    panel on the active session page."""
+    service = WorkoutSessionService(db)
+    return await service.get_previous_completed(session_id, user.id)
+
+
+@router.get(
     "/{session_id}",
     status_code=status.HTTP_200_OK,
     response_model=ResponseSessionDetailSchema,
