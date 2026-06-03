@@ -115,12 +115,25 @@ class ExerciseSetService:
 
     async def get_previous_sets(self, session_id: UUID, user_id: UUID) -> dict:
         """
-        For the given session, find the most recent COMPLETED session with the
-        same split_id and return a map: { exercise_name -> [sets] }
+        For the given session, find the most recent COMPLETED session for
+        the same split that actually has logged sets, and return a map:
+        { exercise_name -> [sets] }.
+
+        Empty completed sessions (auto-completed when a user started a new
+        session without logging anything in the prior one) and abandoned /
+        missed sessions are skipped so the PREV hint on each set always
+        points at the last session the user actually trained — matching the
+        Last Session panel.
         """
         current = await self._verify_session_ownership(session_id, user_id)
 
-        # Find the previous completed session for the same split
+        # Subquery: session IDs that have at least one logged ExerciseSet.
+        non_empty_session_ids = (
+            select(SessionExercise.session_id)
+            .join(ExerciseSet, ExerciseSet.session_exercise_id == SessionExercise.id)
+        )
+
+        # Find the previous completed-and-non-empty session for the same split
         result = await self.db.execute(
             select(WorkoutSession)
             .options(
@@ -132,6 +145,7 @@ class ExerciseSetService:
                 WorkoutSession.split_id == current.split_id,
                 WorkoutSession.status == SessionStatusEnum.COMPLETED,
                 WorkoutSession.id != session_id,
+                WorkoutSession.id.in_(non_empty_session_ids),
             )
             .order_by(desc(WorkoutSession.started_at))
             .limit(1)

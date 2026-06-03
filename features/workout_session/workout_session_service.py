@@ -6,6 +6,7 @@ from sqlalchemy.orm import selectinload
 
 from core.exception_handlers import BaseDomainError
 from features.split_exercise.split_exercise_model import SplitExercise
+from features.exercise_set.exercise_set_model import ExerciseSet
 from .workout_session_repository import WorkoutSessionRepository
 from .workout_session_enum import SessionStatusEnum
 from .session_exercise_model import SessionExercise
@@ -96,10 +97,18 @@ class WorkoutSessionService:
         return session
 
     async def get_previous_completed(self, session_id: UUID, user_id: UUID):
-        """Most recent COMPLETED session for the same split as `session_id`,
-        with exercises and sets eager-loaded. Returns None if there's no
-        prior completed session for that split."""
+        """Most recent COMPLETED session for the same split as `session_id`
+        that actually has logged sets, with exercises and sets eager-loaded.
+
+        We skip completed sessions with zero sets because `start_session`
+        auto-completes any prior in-progress session — so an abandoned-empty
+        session can otherwise surface here as "Last Session" with every
+        exercise blank. Returns None if there's no non-empty prior session."""
         current = await self.repository.get_by_id(session_id, user_id)
+        non_empty_session_ids = (
+            select(SessionExercise.session_id)
+            .join(ExerciseSet, ExerciseSet.session_exercise_id == SessionExercise.id)
+        )
         result = await self.db.execute(
             select(WorkoutSession)
             .options(
@@ -110,6 +119,7 @@ class WorkoutSessionService:
                 WorkoutSession.split_id == current.split_id,
                 WorkoutSession.status == SessionStatusEnum.COMPLETED,
                 WorkoutSession.id != session_id,
+                WorkoutSession.id.in_(non_empty_session_ids),
             )
             .order_by(desc(WorkoutSession.started_at))
             .limit(1)
