@@ -53,8 +53,15 @@ class ExerciseSetService:
     ):
         session = await self._verify_session_ownership(session_id, user_id)
 
-        if session.status != SessionStatusEnum.IN_PROGRESS:
-            raise BaseDomainError("Session is not in progress", 400)
+        # Allow adding sets to IN_PROGRESS sessions (live workout) AND to
+        # COMPLETED sessions (backfill / editing a past session the user
+        # forgot to log). ABANDONED stays locked — those represent an
+        # explicit "I'm not doing this one" and shouldn't accept new sets.
+        if session.status not in (
+            SessionStatusEnum.IN_PROGRESS,
+            SessionStatusEnum.COMPLETED,
+        ):
+            raise BaseDomainError("Session cannot accept new sets", 400)
 
         await self._verify_session_exercise(session_exercise_id, session_id)
 

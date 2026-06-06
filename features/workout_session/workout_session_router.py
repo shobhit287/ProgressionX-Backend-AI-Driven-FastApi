@@ -7,6 +7,7 @@ from datetime import date
 from core.depends import get_db, current_user
 from .workout_session_schema import (
     StartSessionSchema,
+    BackfillSessionSchema,
     CompleteSessionSchema,
     ResponseSessionDetailSchema,
     ResponseSessionSchema,
@@ -32,6 +33,25 @@ async def start_session(
 ):
     service = WorkoutSessionService(db)
     session = await service.start_session(user.id, data.split_id)
+    await db.commit()
+    return await service.get_by_id(session.id, user.id)
+
+
+@router.post(
+    "/backfill",
+    status_code=status.HTTP_201_CREATED,
+    response_model=ResponseSessionDetailSchema,
+)
+async def backfill_session(
+    data: BackfillSessionSchema,
+    user=Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Log a workout the user did on a past day but never recorded. Creates
+    a COMPLETED session for the given date and seeds exercises from the
+    split. The user then adds sets via the regular set endpoints."""
+    service = WorkoutSessionService(db)
+    session = await service.backfill_session(user.id, data.split_id, data.date)
     await db.commit()
     return await service.get_by_id(session.id, user.id)
 

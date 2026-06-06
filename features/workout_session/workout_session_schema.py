@@ -15,6 +15,19 @@ class StartSessionSchema(BaseModel):
     }
 
 
+class BackfillSessionSchema(BaseModel):
+    """Body for `POST /sessions/backfill` — log a workout the user did on a
+    past day but never recorded. Distinct from StartSessionSchema because
+    backfill skips the single-active-session invariant (session is created
+    in COMPLETED state) and accepts a past date."""
+    split_id: UUID = Field(..., alias="splitId")
+    date: date = Field(..., description="Calendar date of the missed workout (YYYY-MM-DD)")
+
+    model_config = {
+        "populate_by_name": True,
+    }
+
+
 class CompleteSessionSchema(BaseModel):
     notes: Optional[str] = Field(None, alias="notes")
 

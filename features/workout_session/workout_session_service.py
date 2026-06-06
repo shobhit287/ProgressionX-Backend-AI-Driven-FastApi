@@ -1,4 +1,4 @@
-from datetime import datetime, timezone, date
+from datetime import datetime, timezone, date, timedelta
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
@@ -56,6 +56,81 @@ class WorkoutSessionService:
             for ex in split_exercises
         ]
 
+        await self.repository.create_session_exercises(session.id, exercises_data)
+
+        return await self.repository.get_by_id_with_details(session.id, user_id)
+
+    async def backfill_session(self, user_id: UUID, split_id: UUID, target_date: date):
+        """Create a COMPLETED session dated to a past day so the user can
+        log a workout they did but never recorded. Status is COMPLETED (not
+        IN_PROGRESS) so this never conflicts with the single-active-session
+        invariant or the auto-complete-stale-session logic. Sets are then
+        added via the regular add_set endpoint (which allows COMPLETED
+        sessions too).
+        """
+        today = datetime.now(timezone.utc).date()
+        if target_date > today:
+            raise BaseDomainError("Cannot backfill a future date", 400)
+
+        # Verify the split belongs to this user.
+        from features.workout_split.workout_split_model import WorkoutSplit
+        split_result = await self.db.execute(
+            select(WorkoutSplit).where(
+                WorkoutSplit.id == split_id,
+                WorkoutSplit.user_id == user_id,
+            )
+        )
+        if not split_result.scalar_one_or_none():
+            raise BaseDomainError("Split not found", 404)
+
+        # Reject duplicate backfill on the same day to keep the at-most-one-
+        # session-per-split-per-day invariant the dashboard relies on.
+        day_start = datetime.combine(target_date, datetime.min.time(), tzinfo=timezone.utc)
+        day_end = day_start + timedelta(days=1)
+        existing_result = await self.db.execute(
+            select(WorkoutSession).where(
+                WorkoutSession.user_id == user_id,
+                WorkoutSession.split_id == split_id,
+                WorkoutSession.started_at >= day_start,
+                WorkoutSession.started_at < day_end,
+            )
+            .limit(1)
+        )
+        if existing_result.scalar_one_or_none():
+            raise BaseDomainError(
+                "A session already exists for this split on that date", 409
+            )
+
+        # Time-of-day is arbitrary for a backfill; use noon UTC so the row
+        # sorts cleanly between same-day entries from other splits.
+        started_at = datetime.combine(target_date, datetime.min.time(), tzinfo=timezone.utc).replace(hour=12)
+
+        session = await self.repository.create({
+            "user_id": user_id,
+            "split_id": split_id,
+            "status": SessionStatusEnum.COMPLETED,
+            "started_at": started_at,
+            "completed_at": started_at,
+            "notes": "Backfilled — logged after the fact",
+        })
+
+        result = await self.db.execute(
+            select(SplitExercise)
+            .where(SplitExercise.split_id == split_id)
+            .order_by(SplitExercise.display_order)
+        )
+        split_exercises = result.scalars().all()
+
+        exercises_data = [
+            {
+                "split_exercise_id": ex.id,
+                "exercise_name": ex.name,
+                "display_order": ex.display_order,
+                "exercise_type": ex.exercise_type,
+                "superset_group": ex.superset_group,
+            }
+            for ex in split_exercises
+        ]
         await self.repository.create_session_exercises(session.id, exercises_data)
 
         return await self.repository.get_by_id_with_details(session.id, user_id)
