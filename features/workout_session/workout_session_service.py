@@ -105,9 +105,15 @@ class WorkoutSessionService:
         session can otherwise surface here as "Last Session" with every
         exercise blank. Returns None if there's no non-empty prior session."""
         current = await self.repository.get_by_id(session_id, user_id)
-        non_empty_session_ids = (
-            select(SessionExercise.session_id)
-            .join(ExerciseSet, ExerciseSet.session_exercise_id == SessionExercise.id)
+        # Correlated EXISTS — "this session has at least one logged set".
+        # IN (SELECT ...) was previously used but SQLAlchemy's autocorrelation
+        # was inconsistent; EXISTS is the canonical SQL for this filter and
+        # plays well with the outer WorkoutSession reference.
+        has_logged_sets = (
+            select(ExerciseSet.id)
+            .join(SessionExercise, SessionExercise.id == ExerciseSet.session_exercise_id)
+            .where(SessionExercise.session_id == WorkoutSession.id)
+            .exists()
         )
         result = await self.db.execute(
             select(WorkoutSession)
@@ -119,7 +125,7 @@ class WorkoutSessionService:
                 WorkoutSession.split_id == current.split_id,
                 WorkoutSession.status == SessionStatusEnum.COMPLETED,
                 WorkoutSession.id != session_id,
-                WorkoutSession.id.in_(non_empty_session_ids),
+                has_logged_sets,
             )
             .order_by(desc(WorkoutSession.started_at))
             .limit(1)

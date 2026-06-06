@@ -127,10 +127,14 @@ class ExerciseSetService:
         """
         current = await self._verify_session_ownership(session_id, user_id)
 
-        # Subquery: session IDs that have at least one logged ExerciseSet.
-        non_empty_session_ids = (
-            select(SessionExercise.session_id)
-            .join(ExerciseSet, ExerciseSet.session_exercise_id == SessionExercise.id)
+        # Correlated EXISTS — "this session has at least one logged set".
+        # Same filter as get_previous_completed so the panel header and the
+        # inline PREV hints always point at the same prior session.
+        has_logged_sets = (
+            select(ExerciseSet.id)
+            .join(SessionExercise, SessionExercise.id == ExerciseSet.session_exercise_id)
+            .where(SessionExercise.session_id == WorkoutSession.id)
+            .exists()
         )
 
         # Find the previous completed-and-non-empty session for the same split
@@ -145,7 +149,7 @@ class ExerciseSetService:
                 WorkoutSession.split_id == current.split_id,
                 WorkoutSession.status == SessionStatusEnum.COMPLETED,
                 WorkoutSession.id != session_id,
-                WorkoutSession.id.in_(non_empty_session_ids),
+                has_logged_sets,
             )
             .order_by(desc(WorkoutSession.started_at))
             .limit(1)
