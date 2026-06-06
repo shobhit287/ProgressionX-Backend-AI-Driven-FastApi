@@ -21,7 +21,11 @@ class BackfillSessionSchema(BaseModel):
     backfill skips the single-active-session invariant (session is created
     in COMPLETED state) and accepts a past date."""
     split_id: UUID = Field(..., alias="splitId")
-    date: date = Field(..., description="Calendar date of the missed workout (YYYY-MM-DD)")
+    # Field is named workout_date (not `date`) to avoid shadowing the
+    # `datetime.date` type imported above — Pydantic raises a FieldInfo
+    # error when an attribute name matches a type annotation in scope. The
+    # JSON key the client sends stays "date" via the alias.
+    workout_date: date = Field(..., alias="date", description="Calendar date of the missed workout (YYYY-MM-DD)")
 
     model_config = {
         "populate_by_name": True,

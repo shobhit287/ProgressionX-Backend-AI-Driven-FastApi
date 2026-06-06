@@ -51,7 +51,7 @@ async def backfill_session(
     a COMPLETED session for the given date and seeds exercises from the
     split. The user then adds sets via the regular set endpoints."""
     service = WorkoutSessionService(db)
-    session = await service.backfill_session(user.id, data.split_id, data.date)
+    session = await service.backfill_session(user.id, data.split_id, data.workout_date)
     await db.commit()
     return await service.get_by_id(session.id, user.id)
 
