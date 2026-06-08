@@ -6,7 +6,6 @@ from sqlalchemy.orm import selectinload
 
 from core.exception_handlers import BaseDomainError
 from features.split_exercise.split_exercise_model import SplitExercise
-from features.exercise_set.exercise_set_model import ExerciseSet
 from .workout_session_repository import WorkoutSessionRepository
 from .workout_session_enum import SessionStatusEnum
 from .session_exercise_model import SessionExercise
@@ -178,18 +177,14 @@ class WorkoutSessionService:
         We skip completed sessions with zero sets because `start_session`
         auto-completes any prior in-progress session — so an abandoned-empty
         session can otherwise surface here as "Last Session" with every
-        exercise blank. Returns None if there's no non-empty prior session."""
+        exercise blank. Filter is done in Python over the most recent 10
+        candidates instead of via a SQL subquery, because SQLAlchemy's
+        autocorrelation for correlated EXISTS against a join inside the same
+        statement has been inconsistent across versions and was causing this
+        endpoint to 500 in production. 10 is plenty — needing to skip more
+        than that implies the user has 10+ consecutive empty sessions, which
+        is essentially impossible. Returns None if no non-empty match."""
         current = await self.repository.get_by_id(session_id, user_id)
-        # Correlated EXISTS — "this session has at least one logged set".
-        # IN (SELECT ...) was previously used but SQLAlchemy's autocorrelation
-        # was inconsistent; EXISTS is the canonical SQL for this filter and
-        # plays well with the outer WorkoutSession reference.
-        has_logged_sets = (
-            select(ExerciseSet.id)
-            .join(SessionExercise, SessionExercise.id == ExerciseSet.session_exercise_id)
-            .where(SessionExercise.session_id == WorkoutSession.id)
-            .exists()
-        )
         result = await self.db.execute(
             select(WorkoutSession)
             .options(
@@ -200,12 +195,14 @@ class WorkoutSessionService:
                 WorkoutSession.split_id == current.split_id,
                 WorkoutSession.status == SessionStatusEnum.COMPLETED,
                 WorkoutSession.id != session_id,
-                has_logged_sets,
             )
             .order_by(desc(WorkoutSession.started_at))
-            .limit(1)
+            .limit(10)
         )
-        return result.scalar_one_or_none()
+        for prev in result.scalars().all():
+            if any(ex.sets for ex in prev.exercises):
+                return prev
+        return None
 
     async def get_all(self, user_id: UUID, filters: dict):
         sessions, total = await self.repository.get_all(user_id, filters)

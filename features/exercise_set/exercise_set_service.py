@@ -134,17 +134,12 @@ class ExerciseSetService:
         """
         current = await self._verify_session_ownership(session_id, user_id)
 
-        # Correlated EXISTS — "this session has at least one logged set".
-        # Same filter as get_previous_completed so the panel header and the
-        # inline PREV hints always point at the same prior session.
-        has_logged_sets = (
-            select(ExerciseSet.id)
-            .join(SessionExercise, SessionExercise.id == ExerciseSet.session_exercise_id)
-            .where(SessionExercise.session_id == WorkoutSession.id)
-            .exists()
-        )
-
-        # Find the previous completed-and-non-empty session for the same split
+        # Fetch the 10 most recent completed sessions and pick the first one
+        # that actually has logged sets. Matches get_previous_completed so
+        # the panel header and the inline PREV hints always point at the
+        # same prior session. Doing the empty-session filter in Python
+        # avoids a SQL subquery whose autocorrelation broke this endpoint
+        # in production.
         result = await self.db.execute(
             select(WorkoutSession)
             .options(
@@ -156,12 +151,15 @@ class ExerciseSetService:
                 WorkoutSession.split_id == current.split_id,
                 WorkoutSession.status == SessionStatusEnum.COMPLETED,
                 WorkoutSession.id != session_id,
-                has_logged_sets,
             )
             .order_by(desc(WorkoutSession.started_at))
-            .limit(1)
+            .limit(10)
         )
-        prev_session = result.scalar_one_or_none()
+        prev_session = None
+        for candidate in result.scalars().all():
+            if any(ex.sets for ex in candidate.exercises):
+                prev_session = candidate
+                break
 
         if not prev_session:
             return {}
