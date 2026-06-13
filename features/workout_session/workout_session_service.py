@@ -9,7 +9,7 @@ from features.split_exercise.split_exercise_model import SplitExercise
 from .workout_session_repository import WorkoutSessionRepository
 from .workout_session_enum import SessionStatusEnum
 from .session_exercise_model import SessionExercise
-
+from .workout_session_model import WorkoutSession
 
 class WorkoutSessionService:
     def __init__(self, db: AsyncSession):
