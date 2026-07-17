@@ -31,6 +31,13 @@ class ExerciseSet(Base):
     weight_kg = Column(Float, nullable=False)
     reps = Column(Integer, nullable=False)
     reps_in_reserve = Column(Integer, nullable=True)
+    # Actual rest taken BEFORE this set, in seconds — the gap between when the
+    # previous set of this exercise was logged (its created_at) and this one.
+    # Derived from timestamps, not user-entered. NULL on the first set of an
+    # exercise, on dropset rows (done back-to-back), and when the gap is
+    # implausibly large (> REST_CAP_SECONDS) so a paused session isn't shown
+    # as a real rest.
+    rest_seconds = Column(Integer, nullable=True)
     is_warmup = Column(Boolean, nullable=False, default=False)
     is_dropset = Column(Boolean, nullable=False, default=False)
     description = Column(Text, nullable=True)

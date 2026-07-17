@@ -63,6 +63,8 @@ class ResponseExerciseSetSchema(BaseModel):
     is_dropset: bool = Field(..., alias="isDropset")
     description: Optional[str] = Field(None)
     parent_set_id: Optional[UUID] = Field(None, alias="parentSetId")
+    # Rest taken before this set (seconds), derived from set timestamps.
+    rest_seconds: Optional[int] = Field(None, alias="restSeconds")
     created_at: datetime = Field(..., alias="createdAt")
     updated_at: datetime = Field(..., alias="updatedAt")
 

@@ -35,6 +35,18 @@ class ExerciseSetRepository:
         )
         return result.scalars().all()
 
+    async def get_last_set(self, session_exercise_id: UUID) -> ExerciseSet | None:
+        """The most recently numbered set for this exercise (or None if the
+        exercise has no sets yet). Used to derive the rest taken before a new
+        set from the previous set's created_at timestamp."""
+        result = await self.db.execute(
+            select(ExerciseSet)
+            .where(ExerciseSet.session_exercise_id == session_exercise_id)
+            .order_by(ExerciseSet.set_number.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
     async def get_next_set_number(self, session_exercise_id: UUID) -> int:
         result = await self.db.execute(
             select(func.max(ExerciseSet.set_number)).where(

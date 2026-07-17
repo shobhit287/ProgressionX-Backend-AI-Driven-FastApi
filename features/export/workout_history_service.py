@@ -69,8 +69,13 @@ def _build_workout_history_prompt(
                     if s.get("reps_in_reserve") is not None
                     else ""
                 )
+                rest = (
+                    f" rest{s['rest_seconds']}s"
+                    if s.get("rest_seconds") is not None
+                    else ""
+                )
                 set_strs.append(
-                    f"{s['weight_kg']:g}x{s['reps']}{rir}{tag}"
+                    f"{s['weight_kg']:g}x{s['reps']}{rir}{tag}{rest}"
                 )
             lines.append(f"    {ex['name']}: {', '.join(set_strs)}")
 
@@ -206,6 +211,7 @@ class WorkoutHistoryExportService:
                 "is_dropset": bool(s.is_dropset),
                 "is_drop": s.parent_set_id is not None,
                 "description": s.description,
+                "rest_seconds": s.rest_seconds,
             })
 
         exercises_by_session: dict[UUID, list[dict]] = defaultdict(list)
@@ -500,6 +506,19 @@ class WorkoutHistoryExportService:
         def _fmt_datetime(dt):
             return f"{dt.day} {dt.strftime('%B %Y, %H:%M UTC')}"
 
+        def _fmt_rest(sec):
+            """Seconds -> compact 'Xm Ys' / 'Ys'. Em-dash when unknown (first
+            set of an exercise, dropset drop, or an implausibly long gap)."""
+            if sec is None:
+                return "—"
+            sec = int(sec)
+            m, s = divmod(sec, 60)
+            if m and s:
+                return f"{m}m {s}s"
+            if m:
+                return f"{m}m"
+            return f"{s}s"
+
         # ── Header ─────────────────────────────────────────────────────
         story.append(Paragraph("ProgressionX Workout History", h1))
         story.append(
@@ -562,9 +581,9 @@ class WorkoutHistoryExportService:
         else:
             story.append(
                 Paragraph(
-                    "Every set logged. Drop sets are numbered as "
-                    "&lt;parent&gt;.&lt;n&gt; (e.g. 3.1, 3.2) and tinted "
-                    "purple. Warm-ups are tagged.",
+                    "Every set logged, with the rest taken before each set. "
+                    "Drop sets are numbered as &lt;parent&gt;.&lt;n&gt; (e.g. "
+                    "3.1, 3.2) and tinted purple. Warm-ups are tagged.",
                     muted,
                 )
             )
@@ -638,7 +657,7 @@ class WorkoutHistoryExportService:
                         continue
 
                     set_rows = [
-                        ["Set", "Weight (kg)", "Reps", "RIR", "Type", "Notes"]
+                        ["Set", "Weight (kg)", "Reps", "RIR", "Rest", "Type", "Notes"]
                     ]
                     # Re-number sets so drops display as <parent>.<n> (e.g.
                     # 3.1, 3.2, 3.3) and regular sets keep a clean sequential
@@ -677,12 +696,16 @@ class WorkoutHistoryExportService:
                             if note_text
                             else "—"
                         )
+                        # Drops are back-to-back — show no rest even though the
+                        # DB value is NULL anyway.
+                        rest_cell = "—" if is_drop else _fmt_rest(s.get("rest_seconds"))
                         set_rows.append(
                             [
                                 num_cell,
                                 f"{s['weight_kg']:g}",
                                 str(s["reps"]),
                                 rir_cell,
+                                rest_cell,
                                 type_cell,
                                 note_cell,
                             ]
@@ -691,12 +714,13 @@ class WorkoutHistoryExportService:
                     set_tbl = Table(
                         set_rows,
                         colWidths=[
-                            1.6 * cm,
-                            2.5 * cm,
-                            1.6 * cm,
                             1.5 * cm,
-                            2.4 * cm,
-                            7.2 * cm,
+                            2.3 * cm,
+                            1.4 * cm,
+                            1.4 * cm,
+                            2.0 * cm,
+                            2.2 * cm,
+                            6.4 * cm,
                         ],
                     )
                     style_cmds = [
@@ -704,9 +728,11 @@ class WorkoutHistoryExportService:
                         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
                         ("FONTSIZE", (0, 0), (-1, -1), 8.5),
-                        ("ALIGN", (1, 0), (3, -1), "RIGHT"),
+                        # Numeric columns (Weight, Reps, RIR, Rest) right-align;
+                        # Set centres; Type left-aligns.
+                        ("ALIGN", (1, 0), (4, -1), "RIGHT"),
                         ("ALIGN", (0, 0), (0, -1), "CENTER"),
-                        ("ALIGN", (4, 0), (4, -1), "LEFT"),
+                        ("ALIGN", (5, 0), (5, -1), "LEFT"),
                         # Top-align all cells so single-line columns line up
                         # cleanly when the Notes paragraph wraps to 2+ lines.
                         ("VALIGN", (0, 0), (-1, -1), "TOP"),

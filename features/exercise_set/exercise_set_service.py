@@ -1,9 +1,15 @@
+from datetime import datetime, timezone
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 from sqlalchemy.orm import selectinload
 
 from core.exception_handlers import BaseDomainError
+
+# Rests longer than this (seconds) almost always mean the session was paused
+# and resumed, not a real inter-set rest — record NULL instead of a bogus
+# multi-hour value. Mirrors the alembic backfill cap.
+REST_CAP_SECONDS = 3600
 from features.workout_session.workout_session_model import WorkoutSession
 from features.workout_session.session_exercise_model import SessionExercise
 from features.workout_session.workout_session_enum import SessionStatusEnum
@@ -69,6 +75,19 @@ class ExerciseSetService:
 
         data["session_exercise_id"] = session_exercise_id
         data["set_number"] = set_number
+
+        # Derive the rest taken before this set from the gap since the previous
+        # set of this exercise was logged. Skipped for dropset drops (done
+        # back-to-back — no rest) and for the first set (nothing to measure
+        # against). Implausibly long gaps are treated as unknown (see cap).
+        if not data.get("is_dropset") and not data.get("parent_set_id"):
+            prev_set = await self.repository.get_last_set(session_exercise_id)
+            if prev_set is not None and prev_set.created_at is not None:
+                elapsed = (
+                    datetime.now(timezone.utc) - prev_set.created_at
+                ).total_seconds()
+                if 0 <= elapsed <= REST_CAP_SECONDS:
+                    data["rest_seconds"] = int(round(elapsed))
 
         # Auto-link dropsets to their top set. If the client didn't send
         # parent_set_id and this is flagged as a dropset, walk back through
@@ -188,6 +207,7 @@ class ExerciseSetService:
                         "is_dropset": s.is_dropset,
                         "had_drops": child_count.get(s.id, 0) > 0,
                         "description": s.description,
+                        "rest_seconds": s.rest_seconds,
                     }
                     for s in ex.sets
                 ],
