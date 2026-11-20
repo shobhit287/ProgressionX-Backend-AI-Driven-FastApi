@@ -46,13 +46,19 @@ def _build_workout_history_prompt(
     end_date: date,
     sessions: list[dict],
 ) -> str:
-    """Compact LLM prompt — only session execution data, kept short so the
-    summary stays focused on the workout history itself."""
-    lines: list[str] = []
+    """Compact LLM prompt — only session execution data. The per-set log is
+    capped to a character budget so wide date ranges (e.g. several months)
+    don't exceed the model's per-request token limit. The most recent sessions
+    are kept — they drive the 'next cycle' suggestions — and any older ones
+    that don't fit are noted. This only trims what the AI *summarises*; the PDF
+    itself still lists every session and set."""
+    # One text block per session so trimming drops whole sessions cleanly
+    # instead of cutting one mid-way.
+    session_blocks: list[str] = []
     for sess in sessions:
         date_str = sess["date"].isoformat() if sess.get("date") else "?"
         dur_min = (sess.get("duration_seconds") or 0) // 60
-        lines.append(f"- {date_str} · {dur_min} min")
+        block_lines = [f"- {date_str} · {dur_min} min"]
         for ex in sess.get("exercises", []):
             sets = ex.get("sets") or []
             if not sets:
@@ -77,9 +83,32 @@ def _build_workout_history_prompt(
                 set_strs.append(
                     f"{s['weight_kg']:g}x{s['reps']}{rir}{tag}{rest}"
                 )
-            lines.append(f"    {ex['name']}: {', '.join(set_strs)}")
+            block_lines.append(f"    {ex['name']}: {', '.join(set_strs)}")
+        # Skip header-only blocks (session with no logged sets adds nothing).
+        if len(block_lines) > 1:
+            session_blocks.append("\n".join(block_lines))
 
-    log_blob = "\n".join(lines) if lines else "(no sets logged)"
+    # Keep the most recent sessions that fit the budget. ~4 chars/token, so
+    # ~24k chars ≈ 6k tokens of log — well under the model's per-request limit
+    # once the system instruction and JSON response are added.
+    CHAR_BUDGET = 24000
+    kept: list[str] = []
+    total = 0
+    for block in reversed(session_blocks):  # newest first
+        if kept and total + len(block) > CHAR_BUDGET:
+            break
+        kept.append(block)
+        total += len(block)
+    kept.reverse()  # restore chronological order
+    omitted = len(session_blocks) - len(kept)
+
+    log_blob = "\n".join(kept) if kept else "(no sets logged)"
+    if omitted > 0:
+        log_blob = (
+            f"(Note: {omitted} older session(s) omitted to stay within AI "
+            f"limits; showing the {len(kept)} most recent sessions with sets.)\n"
+            + log_blob
+        )
 
     return (
         f"User: {user.first_name} {user.last_name or ''} (goal: "
